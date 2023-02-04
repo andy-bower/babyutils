@@ -325,7 +325,7 @@ ssize_t lex(struct abstract **abs_ret, const char *source) {
         abstract.instr = strdup(tok);
         state = LEX_OPERAND;
       } else if (state == LEX_OPERAND) {
-        abstract.opr_num = strtoul(tok, &end, 10);
+        abstract.opr_num = strtoul(tok, &end, 0);
         if (end == tok) {
           abstract.opr_type = OPR_SYM;
           abstract.opr_str = strdup(tok);
