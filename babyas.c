@@ -32,13 +32,21 @@ struct section {
   word_t *data;
 };
 
-struct absasm {
+enum operand_type {
+  OPR_NONE,
+  OPR_NUM,
+  OPR_SYM,
+};
+
+struct abstract {
   int flags;
   int n_operands;
   addr_t org;
   char *label;
   char *instr;
-  num_t operand;
+  enum operand_type opr_type;
+  char *opr_str;
+  num_t opr_num;
 };
 
 struct instr {
@@ -56,6 +64,16 @@ struct mnemonic {
   char *name;
   enum mnem_type type;
   const struct instr *ins;
+};
+
+enum sym_type {
+  SYM_LABEL,
+};
+
+struct symbol {
+  char *name;
+  enum sym_type type;
+  addr_t value;
 };
 
 enum lex {
@@ -84,25 +102,37 @@ struct mnemonic baby[] = {
 };
 #define babysz (sizeof baby / sizeof *baby)
 
-static int alphacasesort(const void *a, const void *b) {
-  const char *ca = *((const char **) a);
-  const char *cb = *((const char **) b);
-  return strcasecmp(ca, cb);
+static int instrsort(const void *a, const void *b) {
+  const struct mnemonic *ma = (const struct mnemonic *) a;
+  const struct mnemonic *mb = (const struct mnemonic *) b;
+  return strcasecmp(ma->name, mb->name);
 }
 
-static int alphacasesearch(const void *key, const void *a) {
-  return alphacasesort(&key, a);
+static int instrsearch(const void *key, const void *a) {
+  return instrsort(&key, a);
+}
+
+static int symsort(const void *a, const void *b) {
+  const struct symbol *sa = (const struct symbol *) a;
+  const struct symbol *sb = (const struct symbol *) b;
+  return strcmp(sa->name, sb->name);
+}
+
+static int symsearch(const void *key, const void *a) {
+  return symsort(&key, a);
 }
 
 static void init(void) {
-  qsort(baby, babysz, sizeof *baby, alphacasesort);
+  qsort(baby, babysz, sizeof *baby, instrsort);
 }
 
-void free_abs(struct absasm *abstract) {
+void free_abs(struct abstract *abstract) {
   if (abstract->label)
     free(abstract->label);
   if (abstract->instr)
     free(abstract->instr);
+  if (abstract->opr_str)
+    free(abstract->opr_str);
 }
 
 static int put_word(struct section *section, word_t word) {
@@ -125,43 +155,130 @@ static int put_word(struct section *section, word_t word) {
   return 0;
 }
 
-int process_abs_asm(struct section *section, struct absasm *abstract) {
+int assemble_one(struct section *section,
+                 struct symbol *symbols, size_t symbol_count,
+                 struct abstract *abstract, bool first_pass) {
   word_t word = 0;
-  int rc = 0;
+  num_t operand;
+
+  if (!first_pass && abstract->opr_type == OPR_SYM) {
+    struct symbol *sym;
+    sym = bsearch(abstract->opr_str, symbols, symbol_count, sizeof *symbols, symsearch);
+    if (sym == NULL || sym->type != SYM_LABEL) {
+      fprintf(stderr, "error: symbol '%s' not found\n", abstract->opr_str);
+      return ENOENT;
+    }
+    operand = sym->value;
+  } else {
+    operand = abstract->opr_num;
+  }
+
+  if (!first_pass)
+    fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %s\n",
+            abstract->flags & HAS_ORG ? "ORG" : "",
+            abstract->flags & HAS_LABEL ? "LABEL" : "",
+            abstract->flags & HAS_INSTR ? "INSTR" : "",
+            abstract->n_operands,
+            abstract->org,
+            abstract->flags & HAS_LABEL ? abstract->label : "",
+            abstract->flags & HAS_INSTR ? abstract->instr : "",
+            operand,
+            abstract->opr_type == OPR_SYM ? abstract->opr_str : "");
 
   if (abstract->flags & HAS_ORG) {
     section->cursor = abstract->org;
   }
 
-  if (abstract->flags & HAS_INSTR) {
+  if (first_pass && abstract->flags & HAS_INSTR) {
+    put_word(section, 0);
+  }
+
+  if (!first_pass && abstract->flags & HAS_INSTR) {
     const struct mnemonic *m;
-    m = bsearch(abstract->instr, baby, babysz, sizeof *baby, alphacasesearch);
+    m = bsearch(abstract->instr, baby, babysz, sizeof *baby, instrsearch);
     if (m == NULL) {
       fprintf(stderr, "no such mnemonic %s\n", abstract->instr);
-      rc = EINVAL;
-      goto finish;
+      return EINVAL;
     }
 
     if (m->type == M_INSTR) {
       word = (word & ~m->ins->mask) | (m->ins->opcode & m->ins->mask);
       if (m->ins->operands == 1)
-        word |= abstract->operand << 3;
+        word |= operand << 3;
       put_word(section, word);
     } else if (m->type == M_DIRECTIVE) {
       if (!strcasecmp(abstract->instr, "NUM"))
-        put_word(section, abstract->operand);
+        put_word(section, operand);
     }
   }
 
-finish:
-  free_abs(abstract);
+  return 0;
+}
+
+int pass_one(struct section *section, struct symbol **symbols, struct abstract *abstract, size_t length) {
+  struct symbol *syms = NULL;
+  size_t symsz = 0;
+  off_t symptr = 0;
+  int i;
+
+  for (i = 0; i < length; i++) {
+    if (abstract[i].flags & HAS_LABEL) {
+      if (symptr == symsz) {
+        symsz = (symsz == 0) ? 32 : symsz << 1;
+        syms = realloc(syms, sizeof *syms * symsz);
+      }
+      syms[symptr].type = SYM_LABEL;
+      syms[symptr].name = strdup(abstract[i].label);
+      syms[symptr].value = section->cursor;
+      symptr++;
+    }
+    assemble_one(section, NULL, 0, abstract + i, true);
+  }
+
+  qsort(syms, symptr, sizeof *syms, symsort);
+
+  *symbols = syms;
+  return symptr;
+}
+
+int assemble(struct section *section, struct abstract *abstract, size_t length) {
+  int rc = 0;
+  int i;
+  struct symbol *symbols;
+  size_t symbol_count;
+
+  symbol_count = pass_one(section, &symbols, abstract, length);
+
+  fprintf(stderr, "Symbol table:\n");
+  for (i = 0; i < symbol_count; i++) {
+    fprintf(stderr, "  %-6s %20s 0x%08x\n",
+            symbols[i].type == SYM_LABEL ? "LABEL" : "",
+            symbols[i].name,
+            symbols[i].value);
+  }
+
+  fprintf(stderr, "Assembly:\n");
+  for (i = 0; i < length; i++) {
+    if (rc == 0)
+      rc = assemble_one(section, symbols, symbol_count, abstract + i, false);
+    free_abs(abstract + i);
+  }
+
+  free(symbols);
+  free(abstract);
   return rc;
 }
 
-int assemble(struct section *section, const char *source) {
+/* TODO: make name tables available to lexer, or rather have
+ * have a big name hash table */
+ssize_t lex(struct abstract **abs_ret, const char *source) {
   FILE *src = fopen(source, "r");
+  struct abstract *buf = NULL;
   char srcline[1024];
+  size_t bufsz = 0;
+  off_t bufptr = 0;
   int rc = 0;
+
   srcline[sizeof srcline - 1] = EOF;
 
   if (src == NULL) {
@@ -171,7 +288,7 @@ int assemble(struct section *section, const char *source) {
 
   while (rc == 0 && !feof(src)) {
     char *tok, *end, *saveptr, *line;
-    struct absasm abstract = { 0 };
+    struct abstract abstract = { 0 };
     enum lex state = LEX_START;
 
     if (fgets(srcline, sizeof srcline, src) == NULL) {
@@ -183,7 +300,7 @@ int assemble(struct section *section, const char *source) {
       goto finish;
     }
 
-    for (line = srcline; (tok = strtok_r(line, " \t", &saveptr)) != NULL; line = NULL) {
+    for (line = srcline; (tok = strtok_r(line, " \t\n", &saveptr)) != NULL; line = NULL) {
       size_t toklen = strlen(tok);
 
       if (state == LEX_START) {
@@ -208,7 +325,13 @@ int assemble(struct section *section, const char *source) {
         abstract.instr = strdup(tok);
         state = LEX_OPERAND;
       } else if (state == LEX_OPERAND) {
-        abstract.operand = strtoul(tok, NULL, 10);
+        abstract.opr_num = strtoul(tok, &end, 10);
+        if (end == tok) {
+          abstract.opr_type = OPR_SYM;
+          abstract.opr_str = strdup(tok);
+        } else {
+          abstract.opr_type = OPR_NUM;
+        }
         state = LEX_SURPLUS_OPERANDS;
       } else if (state == LEX_SURPLUS_OPERANDS) {
         fprintf(stderr, "surplus operand: %s\n", tok);
@@ -216,12 +339,18 @@ int assemble(struct section *section, const char *source) {
         goto finish;
       }
     }
-    rc = process_abs_asm(section, &abstract);
+
+    if (bufptr == bufsz) {
+      bufsz = (bufsz == 0) ? 128 : bufsz << 1;
+      buf = realloc(buf, sizeof *buf * bufsz);
+    }
+    buf[bufptr++] = abstract;
   }
 
 finish:
+  *abs_ret = buf;
   fclose(src);
-  return rc;
+  return rc == 0 ? bufptr : -rc;
 }
 
 int write_section(const char *path, const struct section *section) {
@@ -262,7 +391,9 @@ int main(int argc, char *argv[]) {
   int c;
   int rc = 0;
   int option_index;
+  size_t abstract_len;
   struct section section = { 0 };
+  struct abstract *abstract;
   const char *output = DEFAULT_OUTPUT_FILE;
 
   const struct option options[] = {
@@ -293,7 +424,14 @@ int main(int argc, char *argv[]) {
   }
 
   while (rc == 0 && optind < argc) {
-    rc = assemble(&section, argv[optind++]);
+    rc = lex(&abstract, argv[optind++]);
+    if (rc < 0) {
+      rc = -rc;
+      free(abstract);
+    } else {
+      abstract_len = rc;
+      rc = assemble(&section, abstract, abstract_len);
+    }
   }
 
   if (rc == 0)
