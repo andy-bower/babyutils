@@ -20,6 +20,8 @@
 #define HAS_LABEL 02
 #define HAS_INSTR 04
 
+#define EHANDLED 224
+
 typedef uint32_t addr_t;
 typedef uint32_t word_t;
 typedef uint32_t num_t;
@@ -47,6 +49,8 @@ struct abstract {
   enum operand_type opr_type;
   char *opr_str;
   num_t opr_num;
+  const char *source;
+  int line;
 };
 
 struct instr {
@@ -151,12 +155,18 @@ static int put_word(struct section *section, word_t word) {
     return ESPIPE;
   }
   if (section->cursor >= section->org + section->capacity) {
+    size_t old_capacity = section->capacity;
     section->capacity = section->cursor - section->org + 0x400;
     section->data = realloc(section->data, sizeof(word_t) * section->capacity);
     if (section->data == NULL) {
       fprintf(stderr, "error expanding section to %ud words\n", section->capacity);
       return errno;
     }
+   memset(section->data + old_capacity, '\0', (section->capacity - old_capacity) * sizeof(word));
+  }
+  if (section->data[section->cursor - section->org] != 0) {
+    fprintf(stderr, "section already includes data at 0x%08x\n", section->cursor);
+    return EEXIST;
   }
   section->data[section->cursor++ - section->org] = word;
   if (section->cursor - section->org > section->length)
@@ -169,6 +179,7 @@ int assemble_one(struct section *section,
                  struct abstract *abstract, bool first_pass) {
   word_t word = 0;
   num_t operand;
+  int rc = 0;
 
   if (!first_pass && abstract->opr_type == OPR_SYM) {
     struct symbol *sym;
@@ -183,7 +194,7 @@ int assemble_one(struct section *section,
   }
 
   if (!first_pass)
-    fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %s\n",
+    fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %-10s %s:%d\n",
             abstract->flags & HAS_ORG ? "ORG" : "",
             abstract->flags & HAS_LABEL ? "LABEL" : "",
             abstract->flags & HAS_INSTR ? "INSTR" : "",
@@ -192,7 +203,9 @@ int assemble_one(struct section *section,
             abstract->flags & HAS_LABEL ? abstract->label : "",
             abstract->flags & HAS_INSTR ? abstract->instr : "",
             operand,
-            abstract->opr_type == OPR_SYM ? abstract->opr_str : "");
+            abstract->opr_type == OPR_SYM ? abstract->opr_str : "",
+            abstract->source,
+            abstract->line);
 
   if (abstract->flags & HAS_ORG) {
     section->cursor = abstract->org;
@@ -218,15 +231,20 @@ int assemble_one(struct section *section,
     } else if (m->type == M_DIRECTIVE) {
       switch (m->dir) {
       case D_NUM:
-        put_word(section, operand);
+        rc = put_word(section, operand);
         break;
       case D_EJA:
-        put_word(section, operand - 1);
+        rc = put_word(section, operand - 1);
       }
     }
   }
 
-  return 0;
+  if (rc != 0) {
+    fprintf(stderr, "error at %s:%d\n", abstract->source, abstract->line);
+    rc = EHANDLED;
+  }
+
+  return rc;
 }
 
 int pass_one(struct section *section, struct symbol **symbols, struct abstract *abstract, size_t length) {
@@ -294,6 +312,7 @@ ssize_t lex(struct abstract **abs_ret, const char *source) {
   size_t bufsz = 0;
   off_t bufptr = 0;
   int rc = 0;
+  int line_num = 1;
 
   srcline[sizeof srcline - 1] = EOF;
 
@@ -302,9 +321,9 @@ ssize_t lex(struct abstract **abs_ret, const char *source) {
     return 1;
   }
 
-  while (rc == 0 && !feof(src)) {
+  for (;rc == 0 && !feof(src); line_num++) {
     char *tok, *end, *saveptr, *line;
-    struct abstract abstract = { 0 };
+    struct abstract abstract = { .source = source, .line = line_num };
     enum lex state = LEX_START;
 
     if (fgets(srcline, sizeof srcline, src) == NULL) {
@@ -453,7 +472,7 @@ int main(int argc, char *argv[]) {
   if (rc == 0)
     rc = write_section(output, &section);
 
-  if (rc != 0)
+  if (rc != 0 && rc != EHANDLED)
     fprintf(stderr, "babyas: %s\n", strerror(rc));
 
   return rc == 0 ? 0 : 1;

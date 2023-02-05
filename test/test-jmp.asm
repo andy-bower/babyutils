@@ -21,6 +21,7 @@ dat2:
 dat3:
   num -0x33
 
+28:
 check1:
   num 1 -- should become 0x11
 check2:
