@@ -60,10 +60,18 @@ enum mnem_type {
   M_DIRECTIVE,
 };
 
+enum directive {
+  D_NUM,
+  D_EJA,
+};
+
 struct mnemonic {
   char *name;
   enum mnem_type type;
-  const struct instr *ins;
+  union {
+    const struct instr *ins;
+    enum directive dir;
+  };
 };
 
 enum sym_type {
@@ -92,13 +100,14 @@ const struct instr I_STO = { 06, 07, 1 };
 const struct instr I_HLT = { 07, 07, 0 };
 
 struct mnemonic baby[] = {
-  { "JMP", M_INSTR, &I_JMP },
-  { "SUB", M_INSTR, &I_SUB },
-  { "LDN", M_INSTR, &I_LDN },
-  { "SKN", M_INSTR, &I_SKN },
-  { "STO", M_INSTR, &I_STO },
-  { "HLT", M_INSTR, &I_HLT },
-  { "NUM", M_DIRECTIVE, NULL },
+  { "JMP", M_INSTR, .ins=&I_JMP },
+  { "SUB", M_INSTR, .ins=&I_SUB },
+  { "LDN", M_INSTR, .ins=&I_LDN },
+  { "SKN", M_INSTR, .ins=&I_SKN },
+  { "STO", M_INSTR, .ins=&I_STO },
+  { "HLT", M_INSTR, .ins=&I_HLT },
+  { "NUM", M_DIRECTIVE, .dir=D_NUM },
+  { "EJA", M_DIRECTIVE, .dir=D_EJA },
 };
 #define babysz (sizeof baby / sizeof *baby)
 
@@ -207,8 +216,13 @@ int assemble_one(struct section *section,
         word |= operand << 3;
       put_word(section, word);
     } else if (m->type == M_DIRECTIVE) {
-      if (!strcasecmp(abstract->instr, "NUM"))
+      switch (m->dir) {
+      case D_NUM:
         put_word(section, operand);
+        break;
+      case D_EJA:
+        put_word(section, operand - 1);
+      }
     }
   }
 
@@ -220,6 +234,7 @@ int pass_one(struct section *section, struct symbol **symbols, struct abstract *
   size_t symsz = 0;
   off_t symptr = 0;
   int i;
+  addr_t saved_cursor = section->cursor;
 
   for (i = 0; i < length; i++) {
     if (abstract[i].flags & HAS_LABEL) {
@@ -237,6 +252,7 @@ int pass_one(struct section *section, struct symbol **symbols, struct abstract *
 
   qsort(syms, symptr, sizeof *syms, symsort);
 
+  section->cursor = saved_cursor;
   *symbols = syms;
   return symptr;
 }
