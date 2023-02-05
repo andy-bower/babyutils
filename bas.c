@@ -130,6 +130,8 @@ struct mnemonic baby[] = {
 };
 #define babysz (sizeof baby / sizeof *baby)
 
+int verbose;
+
 static int instrsort(const void *a, const void *b) {
   const struct mnemonic *ma = (const struct mnemonic *) a;
   const struct mnemonic *mb = (const struct mnemonic *) b;
@@ -209,7 +211,7 @@ int assemble_one(struct section *section,
     operand = abstract->opr_num;
   }
 
-  if (!first_pass)
+  if (verbose && !first_pass)
     fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %-10s %s:%d\n",
             abstract->flags & HAS_ORG ? "ORG" : "",
             abstract->flags & HAS_LABEL ? "LABEL" : "",
@@ -299,7 +301,8 @@ int assemble(struct section *section,
   int rc = 0;
   int i;
 
-  fprintf(stderr, "Abstract assembly source:\n");
+  if (verbose)
+    fprintf(stderr, "Abstract assembly source:\n");
   for (i = 0; i < abstract_count; i++) {
     if (rc == 0)
       rc = assemble_one(section, symbols, symbol_count, abstract + i, false);
@@ -435,16 +438,19 @@ int write_section(const char *path, const struct section *section) {
     return 1;
   }
 
-  fprintf(stderr, "Writing section\n  org = 0x%x\n  length = 0x%x\n",
-          section->org, section->length);
+  if (verbose)
+    fprintf(stderr, "Writing section\n  org = 0x%x\n  length = 0x%x\n",
+            section->org, section->length);
 
   fprintf(file, "v2.0 raw\n");
   for (word = 0; word < section->org + section->length; word++) {
     fprintf(file, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
   }
 
-  fprintf(stderr, "  words in output = 0x%x\n", word);
-  fprintf(stderr, "Written %s\n", path);
+  if (verbose) {
+    fprintf(stderr, "  words in output = 0x%x\n", word);
+    fprintf(stderr, "Written %s\n", path);
+  }
 
   fclose(file);
   return 0;
@@ -455,7 +461,8 @@ int usage(FILE *to, int rc, const char *prog) {
     "OPTIONS\n"
     "  -a, --listing        output listing\n"
     "  -h, --help           output usage and exit\n"
-    "  -o, --output FILE    write object to FILE, default: %s\n",
+    "  -o, --output FILE    write object to FILE, default: %s\n"
+    "  -v, --verbose        output verbose information\n",
     prog, DEFAULT_OUTPUT_FILE);
   return rc;
 }
@@ -477,16 +484,17 @@ int main(int argc, char *argv[]) {
   const char *output = DEFAULT_OUTPUT_FILE;
 
   const struct option options[] = {
-    { "output",  required_argument, 0,        'o' },
-    { "help",    no_argument,       0,        'h' },
-    { "listing", no_argument,       &listing, 'a' },
+    { "output",   required_argument, 0,        'o' },
+    { "help",     no_argument,       0,        'h' },
+    { "listing",  no_argument,       &listing, 'a' },
+    { "verbose#", no_argument,       &verbose, 'v' },
     { NULL }
   };
 
   init();
 
   do {
-    c = getopt_long(argc, argv, "aho:", options, &option_index);
+    c = getopt_long(argc, argv, "ahvo:", options, &option_index);
     switch (c) {
     case 'a':
       listing = c;
@@ -495,6 +503,9 @@ int main(int argc, char *argv[]) {
       return usage(stdout, 0, argv[0]);
     case 'o':
       output = optarg;
+      break;
+    case 'v':
+      verbose = c;
       break;
     }
   } while (c != -1 && c != '?' && c != ':');
@@ -527,12 +538,14 @@ int main(int argc, char *argv[]) {
 
       symbol_count = pass_one(&section, &symbols, abstract, abstract_count);
 
-      fprintf(stderr, "Symbol table:\n");
-      for (i = 0; i < symbol_count; i++) {
-        fprintf(stderr, "  %-6s %20s 0x%08x\n",
-                symbols[i].type == SYM_LABEL ? "LABEL" : "",
-                symbols[i].name,
-                symbols[i].value);
+      if (verbose) {
+        fprintf(stderr, "Symbol table:\n");
+        for (i = 0; i < symbol_count; i++) {
+          fprintf(stderr, "  %-6s %20s 0x%08x\n",
+                  symbols[i].type == SYM_LABEL ? "LABEL" : "",
+                  symbols[i].name,
+                  symbols[i].value);
+        }
       }
 
       rc = assemble(&section, symbols, symbol_count, abstract, abstract_count);
