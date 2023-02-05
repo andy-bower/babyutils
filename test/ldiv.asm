@@ -1,5 +1,6 @@
 -- Long division
---   http://madrona.ca/e/SSEM/programs/div.html
+--   From http://madrona.ca/e/SSEM/programs/div.html
+
 00: NUM 19         -- jump address; encodes SKN, AKA NOP at start
     LDN dividend   -- Accumulator := -A
     STO dividend   -- Store as -A
