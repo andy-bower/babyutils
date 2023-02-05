@@ -291,31 +291,21 @@ int pass_one(struct section *section, struct symbol **symbols, struct abstract *
   return symptr;
 }
 
-int assemble(struct section *section, struct abstract *abstract, size_t length) {
+int assemble(struct section *section,
+             struct symbol *symbols,
+             size_t symbol_count,
+             struct abstract *abstract,
+             size_t abstract_count) {
   int rc = 0;
   int i;
-  struct symbol *symbols;
-  size_t symbol_count;
-
-  symbol_count = pass_one(section, &symbols, abstract, length);
-
-  fprintf(stderr, "Symbol table:\n");
-  for (i = 0; i < symbol_count; i++) {
-    fprintf(stderr, "  %-6s %20s 0x%08x\n",
-            symbols[i].type == SYM_LABEL ? "LABEL" : "",
-            symbols[i].name,
-            symbols[i].value);
-  }
 
   fprintf(stderr, "Abstract assembly source:\n");
-  for (i = 0; i < length; i++) {
+  for (i = 0; i < abstract_count; i++) {
     if (rc == 0)
       rc = assemble_one(section, symbols, symbol_count, abstract + i, false);
     free_abs(abstract + i);
   }
 
-  free(symbols);
-  free(abstract);
   return rc;
 }
 
@@ -478,10 +468,12 @@ int main(int argc, char *argv[]) {
   int listing = 0;
   int num_sources;
   int option_index;
-  size_t abstract_len;
   struct section section = { 0 };
   struct abstract *abstract;
+  size_t abstract_count;
   struct source *sources = NULL;
+  struct symbol *symbols = NULL;
+  size_t symbol_count = 0;
   const char *output = DEFAULT_OUTPUT_FILE;
 
   const struct option options[] = {
@@ -531,8 +523,19 @@ int main(int argc, char *argv[]) {
       rc = -rc;
       free(abstract);
     } else {
-      abstract_len = rc;
-      rc = assemble(&section, abstract, abstract_len);
+      abstract_count = rc;
+
+      symbol_count = pass_one(&section, &symbols, abstract, abstract_count);
+
+      fprintf(stderr, "Symbol table:\n");
+      for (i = 0; i < symbol_count; i++) {
+        fprintf(stderr, "  %-6s %20s 0x%08x\n",
+                symbols[i].type == SYM_LABEL ? "LABEL" : "",
+                symbols[i].name,
+                symbols[i].value);
+      }
+
+      rc = assemble(&section, symbols, symbol_count, abstract, abstract_count);
     }
   }
 
@@ -576,6 +579,8 @@ int main(int argc, char *argv[]) {
     }
     free(sources);
   }
+  free(symbols);
+  free(abstract);
 
   return rc == 0 ? 0 : 1;
 }
