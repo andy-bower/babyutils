@@ -15,7 +15,10 @@
 #include <dirent.h>
 #include <libgen.h>
 
+#define WRITER_LOGISIM "logisim"
+
 #define DEFAULT_OUTPUT_FILE "b.out"
+#define DEFAULT_OUTPUT_FORMAT WRITER_LOGISIM
 
 #define HAS_ORG   01
 #define HAS_LABEL 02
@@ -26,6 +29,8 @@
 typedef uint32_t addr_t;
 typedef uint32_t word_t;
 typedef uint32_t num_t;
+
+static const word_t fill_value = 0x0;
 
 enum operand_type {
   OPR_NONE,
@@ -111,6 +116,11 @@ enum lex {
   LEX_OPERAND,
   LEX_SURPLUS_OPERANDS,
   LEX_COMMENT,
+};
+
+struct format {
+  const char *name;
+  int (*writer)(FILE *stream, const struct section *section);
 };
 
 const struct instr I_JMP = { 00, 07, 1 };
@@ -446,10 +456,31 @@ finish:
   return rc == 0 ? bufptr : -rc;
 }
 
-int write_section(const char *path, const struct section *section) {
-  FILE *file;
+static int logisim_writer(FILE *stream, const struct section *section) {
   addr_t word;
-  word_t fill_value = 0x0;
+  int rc;
+
+  fprintf(stream, "v2.0 raw\n");
+  for (word = 0; word < section->org + section->length; word++) {
+    rc = fprintf(stream, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
+    if (rc < 0) return -errno;
+  }
+
+  if (verbose) {
+    fprintf(stderr, "  words in output = 0x%x\n", word);
+  }
+
+  return 0;
+}
+
+const static struct format formats[] = {
+  { WRITER_LOGISIM, logisim_writer },
+};
+#define formatsz (sizeof formats / sizeof *formats)
+
+static int write_section(const char *path, const struct section *section, const struct format *format) {
+  FILE *file;
+  int rc;
 
   if (strcmp(path, "-")) {
     file = fopen(path, "w");
@@ -465,30 +496,38 @@ int write_section(const char *path, const struct section *section) {
     fprintf(stderr, "Writing section\n  org = 0x%x\n  length = 0x%x\n",
             section->org, section->length);
 
-  fprintf(file, "v2.0 raw\n");
-  for (word = 0; word < section->org + section->length; word++) {
-    fprintf(file, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
-  }
+  rc = format->writer(file, section);
 
   if (verbose) {
-    fprintf(stderr, "  words in output = 0x%x\n", word);
     fprintf(stderr, "Written %s\n", path);
   }
 
   if (file != stdout)
     fclose(file);
-  return 0;
+
+  return rc;
 }
 
 int usage(FILE *to, int rc, const char *prog) {
+  int i;
+
   fprintf(to, "usage: %s [OPTIONS] [SOURCE|-]...\n"
     "OPTIONS\n"
-    "  -a, --listing        output listing\n"
-    "  -h, --help           output usage and exit\n"
-    "  -m, --map            output map\n"
-    "  -o, --output FILE|-  write object to FILE, default: %s\n"
-    "  -v, --verbose        output verbose information\n",
-    prog, DEFAULT_OUTPUT_FILE);
+    "  -a, --listing            output listing\n"
+    "  -h, --help               output usage and exit\n"
+    "  -m, --map                output map\n"
+    "  -o, --output FILE|-      write object to FILE, default: %s\n"
+    "  -O, --output-format FMT  use FMT output format, default: %s\n"
+    "  -v, --verbose            output verbose information\n"
+    "\n"
+    "%s: supported output formats:",
+    prog, DEFAULT_OUTPUT_FILE, DEFAULT_OUTPUT_FORMAT,
+    prog);
+
+  for (i = 0; i < formatsz; i++)
+    fprintf(to, " %s", formats[i].name);
+
+  fprintf(to, "\n");
   return rc;
 }
 
@@ -507,22 +546,28 @@ int main(int argc, char *argv[]) {
   struct source *sources = NULL;
   struct symbol *symbols = NULL;
   size_t symbol_count = 0;
+  const struct format *format;
   const char *output = DEFAULT_OUTPUT_FILE;
+  const char *output_format = DEFAULT_OUTPUT_FORMAT;
 
   const struct option options[] = {
-    { "output",   required_argument, 0,        'o' },
-    { "help",     no_argument,       0,        'h' },
-    { "listing",  no_argument,       &listing, 'a' },
-    { "map",      no_argument,       &map,     'm' },
-    { "verbose",  no_argument,       &verbose, 'v' },
+    { "output-format", required_argument, 0,        'O' },
+    { "output",        required_argument, 0,        'o' },
+    { "help",          no_argument,       0,        'h' },
+    { "listing",       no_argument,       &listing, 'a' },
+    { "map",           no_argument,       &map,     'm' },
+    { "verbose",       no_argument,       &verbose, 'v' },
     { NULL }
   };
 
   init();
 
   do {
-    c = getopt_long(argc, argv, "ahmvo:", options, &option_index);
+    c = getopt_long(argc, argv, "ahmvo:O:", options, &option_index);
     switch (c) {
+    case 'O':
+      output_format = optarg;
+      break;
     case 'a':
       listing = c;
       break;
@@ -543,9 +588,20 @@ int main(int argc, char *argv[]) {
   if (c != -1)
     return usage(stderr, 1, argv[0]);
 
+  for (i = 0; i < formatsz; i++) {
+    if (!strcmp(output_format, formats[i].name))
+      break;
+  }
+  if (i == formatsz) {
+    fprintf(stderr, "No such output format: %s\n", output_format);
+    rc = EHANDLED; /* EINVAL */
+  } else {
+    format = formats + i;
+  }
+
   if (optind == argc) {
     fprintf(stderr, "No source specified\n");
-    rc = ENOENT;
+    rc = EHANDLED; /* ENOENT */
   }
 
   num_sources = argc - optind;
@@ -607,7 +663,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (rc == 0)
-    rc = write_section(output, &section);
+    rc = write_section(output, &section, format);
 
   if(rc == 0 && map) {
     printf("Sections:\n");
@@ -618,7 +674,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (rc != 0 && rc != EHANDLED)
-    fprintf(stderr, "babyas: %s\n", strerror(rc));
+    fprintf(stderr, "%s: %s\n", argv[0], strerror(rc));
 
   if (sources != NULL) {
     for (i = 0; i < num_sources; i++) {
