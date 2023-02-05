@@ -291,7 +291,7 @@ int assemble(struct section *section, struct abstract *abstract, size_t length) 
             symbols[i].value);
   }
 
-  fprintf(stderr, "Assembly:\n");
+  fprintf(stderr, "Abstract assembly source:\n");
   for (i = 0; i < length; i++) {
     if (rc == 0)
       rc = assemble_one(section, symbols, symbol_count, abstract + i, false);
@@ -413,8 +413,8 @@ int write_section(const char *path, const struct section *section) {
   return 0;
 }
 
-int usage(int rc, const char *prog) {
-  fprintf(stderr, "usage: %s [OPTIONS] [SOURCE]...\n"
+int usage(FILE *to, int rc, const char *prog) {
+  fprintf(to, "usage: %s [OPTIONS] [SOURCE]...\n"
     "OPTIONS\n"
     "  -o, --output FILE    write object to FILE, default: %s\n"
     "  -h, --help           output usage and exit\n",
@@ -443,7 +443,7 @@ int main(int argc, char *argv[]) {
     c = getopt_long(argc, argv, "ho:", options, &option_index);
     switch (c) {
     case 'h':
-      return usage(0, argv[0]);
+      return usage(stdout, 0, argv[0]);
     case 'o':
       output = optarg;
       break;
@@ -451,7 +451,7 @@ int main(int argc, char *argv[]) {
   } while (c != -1 && c != '?' && c != ':');
 
   if (c != -1)
-    return usage(1, argv[0]);
+    return usage(stderr, 1, argv[0]);
 
   if (optind == argc) {
     fprintf(stderr, "No source specified\n");
