@@ -321,7 +321,7 @@ int assemble(struct section *section, struct abstract *abstract, size_t length) 
 
 long seek_to_line(struct source *source, int line) {
   if (source == NULL) {
-    return 0;
+    return -ENOENT;
   } else if (line >= 1 && line <= source->lines) {
     long offset = source->index[line - 1];
     fseek(source->stream, offset, SEEK_SET);
@@ -546,7 +546,7 @@ int main(int argc, char *argv[]) {
       char *str;
       size_t len = -1;
 
-      if (sd->debug && seek_to_line(sd->debug->source, sd->debug->line) > 0) {
+      if (sd->debug && seek_to_line(sd->debug->source, sd->debug->line) >= 0) {
         str = fgets(srcline, sizeof srcline, sd->debug->source->stream);
         len = strlen(str);
         if (str[len - 1] == '\n')
