@@ -2,9 +2,10 @@
 
 This is an assembler for a particular teaching variant of the Manchester Baby and outputs binary objects in the Logisim image format.
 
-# Unique features
+## Unique features
 
-New assembler directive `EJA` standing for Effective Jump Address, which stores a data word in the object file that points to the instruction before the given location, which is either an address or symbol.
+- Labels are accepted in place of addresses.
+- New assembler directive `EJA` standing for Effective Jump Address, which stores a data word in the object file that points to the instruction before the given location, which is either an address or symbol.
 
 ## Example
 
