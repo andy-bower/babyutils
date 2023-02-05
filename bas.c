@@ -447,13 +447,18 @@ finish:
 }
 
 int write_section(const char *path, const struct section *section) {
-  FILE *file = fopen(path, "w");
+  FILE *file;
   addr_t word;
   word_t fill_value = 0x0;
 
-  if (file == NULL) {
-    perror("fopen");
-    return 1;
+  if (strcmp(path, "-")) {
+    file = fopen(path, "w");
+    if (file == NULL) {
+      perror("fopen");
+      return 1;
+    }
+  } else {
+    file = stdout;
   }
 
   if (verbose)
@@ -470,16 +475,17 @@ int write_section(const char *path, const struct section *section) {
     fprintf(stderr, "Written %s\n", path);
   }
 
-  fclose(file);
+  if (file != stdout)
+    fclose(file);
   return 0;
 }
 
 int usage(FILE *to, int rc, const char *prog) {
-  fprintf(to, "usage: %s [OPTIONS] [SOURCE]...\n"
+  fprintf(to, "usage: %s [OPTIONS] [SOURCE|-]...\n"
     "OPTIONS\n"
     "  -a, --listing        output listing\n"
     "  -h, --help           output usage and exit\n"
-    "  -o, --output FILE    write object to FILE, default: %s\n"
+    "  -o, --output FILE|-  write object to FILE, default: %s\n"
     "  -v, --verbose        output verbose information\n",
     prog, DEFAULT_OUTPUT_FILE);
   return rc;
