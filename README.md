@@ -10,12 +10,15 @@ This is an assembler for a particular teaching variant of the Manchester Baby an
 ## Options
 
 ```
-usage: ./bas [OPTIONS] [SOURCE|-]...
 OPTIONS
-  -a, --listing        output listing
-  -h, --help           output usage and exit
-  -o, --output FILE|-  write object to FILE, default: b.out
-  -v, --verbose        output verbose information
+  -a, --listing            output listing
+  -h, --help               output usage and exit
+  -m, --map                output map
+  -o, --output FILE|-      write object to FILE, default: b.out
+  -O, --output-format FMT  use FMT output format, default: logisim
+  -v, --verbose            output verbose information
+
+./bas: supported output formats: logisim binary
 ```
 
 ## Example
