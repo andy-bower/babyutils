@@ -37,6 +37,8 @@ struct source {
   char *path;
   char *leaf;
   FILE *stream;
+  bool seekable;
+  bool noclose;
   int lines;
   long *index;
   size_t indexsz;
@@ -315,6 +317,8 @@ int assemble(struct section *section,
 long seek_to_line(struct source *source, int line) {
   if (source == NULL) {
     return -ENOENT;
+  } else if (!source->seekable) {
+    return -EOPNOTSUPP;
   } else if (line >= 1 && line <= source->lines) {
     long offset = source->index[line - 1];
     fseek(source->stream, offset, SEEK_SET);
@@ -338,21 +342,33 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
   srcline[sizeof srcline - 1] = EOF;
 
   if (source->stream == NULL) {
-    source->stream = fopen(source->path, "r");
-    if (source->stream == NULL) {
-      perror("fopen");
-      return 1;
+    if (!strcmp(source->path, "-")) {
+      free(source->leaf);
+      source->leaf = strdup("stdin");
+      source->stream = stdin;
+      source->seekable = false;
+      source->noclose = true;
+    } else {
+      source->stream = fopen(source->path, "r");
+      source->seekable = true;
+      source->noclose = false;
+      if (source->stream == NULL) {
+        perror("fopen");
+        return 1;
+      }
     }
-  } else {
+  } else if (source->seekable) {
     rewind(source->stream);
   }
 
-  source->lines = 0;
-  source->indexsz = 40;
-  source->index = calloc(source->indexsz, sizeof *source->index);
-  if (source->index == NULL) {
-    rc = -errno;
-    goto finish;
+  if (source->seekable) {
+    source->lines = 0;
+    source->indexsz = 40;
+    source->index = calloc(source->indexsz, sizeof *source->index);
+    if (source->index == NULL) {
+      rc = -errno;
+      goto finish;
+    }
   }
 
   for (line_num = 1;rc == 0 && !feof(source->stream); line_num++) {
@@ -360,12 +376,14 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
     struct abstract abstract = { .source = source, .line = line_num };
     enum lex state = LEX_START;
 
-    if (source->lines == source->indexsz) {
-      source->indexsz <<= 1;
-      source->index = realloc(source->index, sizeof *source->index * source->indexsz);
+    if (source->seekable) {
+      if (source->lines == source->indexsz) {
+        source->indexsz <<= 1;
+        source->index = realloc(source->index, sizeof *source->index * source->indexsz);
+      }
+      source->index[line_num - 1] = ftell(source->stream);
+      source->lines++;
     }
-    source->index[line_num - 1] = ftell(source->stream);
-    source->lines++;
 
     if (fgets(srcline, sizeof srcline, source->stream) == NULL) {
       rc = errno;
@@ -572,7 +590,7 @@ int main(int argc, char *argv[]) {
              a, sd->value,
              sd->debug && sd->debug->source ? sd->debug->source->leaf : "",
              sd->debug && sd->debug->source ? sd->debug->line : 0,
-             len != -1 ? str : "(no source)");
+             len != -1 ? str : "");
     }
   }
 
@@ -584,10 +602,12 @@ int main(int argc, char *argv[]) {
 
   if (sources != NULL) {
     for (i = 0; i < num_sources; i++) {
-      if (sources[i].stream != NULL) {
-        free(sources[i].path);
-        free(sources[i].leaf);
-        fclose(sources[i].stream);
+      struct source *source = sources + i;
+      if (source->stream != NULL) {
+        free(source->path);
+        free(source->leaf);
+        if (!source->noclose)
+          fclose(source->stream);
       }
     }
     free(sources);
