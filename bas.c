@@ -13,6 +13,7 @@
 #include <getopt.h>
 #include <errno.h>
 #include <dirent.h>
+#include <libgen.h>
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 
@@ -26,18 +27,19 @@ typedef uint32_t addr_t;
 typedef uint32_t word_t;
 typedef uint32_t num_t;
 
-struct section {
-  addr_t capacity;
-  addr_t length;
-  addr_t org;
-  addr_t cursor;
-  word_t *data;
-};
-
 enum operand_type {
   OPR_NONE,
   OPR_NUM,
   OPR_SYM,
+};
+
+struct source {
+  char *path;
+  char *leaf;
+  FILE *stream;
+  int lines;
+  long *index;
+  size_t indexsz;
 };
 
 struct abstract {
@@ -49,8 +51,21 @@ struct abstract {
   enum operand_type opr_type;
   char *opr_str;
   num_t opr_num;
-  const char *source;
+  struct source *source;
   int line;
+};
+
+struct sectiondata {
+  word_t value;
+  struct abstract *debug;
+};
+
+struct section {
+  addr_t capacity;
+  addr_t length;
+  addr_t org;
+  addr_t cursor;
+  struct sectiondata *data;
 };
 
 struct instr {
@@ -148,7 +163,7 @@ void free_abs(struct abstract *abstract) {
     free(abstract->opr_str);
 }
 
-static int put_word(struct section *section, word_t word) {
+static int put_word(struct section *section, word_t word, struct abstract *abs) {
   if (section->cursor < section->org) {
     fprintf(stderr, "cannot write to 0x%x before section start 0x%x\n",
             section->cursor, section->org);
@@ -157,18 +172,19 @@ static int put_word(struct section *section, word_t word) {
   if (section->cursor >= section->org + section->capacity) {
     size_t old_capacity = section->capacity;
     section->capacity = section->cursor - section->org + 0x400;
-    section->data = realloc(section->data, sizeof(word_t) * section->capacity);
+    section->data = realloc(section->data, sizeof(*section->data) * section->capacity);
     if (section->data == NULL) {
       fprintf(stderr, "error expanding section to %ud words\n", section->capacity);
       return errno;
     }
-   memset(section->data + old_capacity, '\0', (section->capacity - old_capacity) * sizeof(word));
+   memset(section->data + old_capacity, '\0', (section->capacity - old_capacity) * sizeof(*section->data));
   }
-  if (section->data[section->cursor - section->org] != 0) {
+  if (section->data[section->cursor - section->org].debug != NULL) {
     fprintf(stderr, "section already includes data at 0x%08x\n", section->cursor);
     return EEXIST;
   }
-  section->data[section->cursor++ - section->org] = word;
+  section->data[section->cursor   - section->org].debug = abs;
+  section->data[section->cursor++ - section->org].value = word;
   if (section->cursor - section->org > section->length)
     section->length = section->cursor - section->org;
   return 0;
@@ -204,7 +220,7 @@ int assemble_one(struct section *section,
             abstract->flags & HAS_INSTR ? abstract->instr : "",
             operand,
             abstract->opr_type == OPR_SYM ? abstract->opr_str : "",
-            abstract->source,
+            abstract->source->leaf,
             abstract->line);
 
   if (abstract->flags & HAS_ORG) {
@@ -212,7 +228,7 @@ int assemble_one(struct section *section,
   }
 
   if (first_pass && abstract->flags & HAS_INSTR) {
-    put_word(section, 0);
+    put_word(section, 0, NULL);
   }
 
   if (!first_pass && abstract->flags & HAS_INSTR) {
@@ -227,20 +243,20 @@ int assemble_one(struct section *section,
       word = (word & ~m->ins->mask) | (m->ins->opcode & m->ins->mask);
       if (m->ins->operands == 1)
         word |= operand << 3;
-      put_word(section, word);
+      put_word(section, word, abstract);
     } else if (m->type == M_DIRECTIVE) {
       switch (m->dir) {
       case D_NUM:
-        rc = put_word(section, operand);
+        rc = put_word(section, operand, abstract);
         break;
       case D_EJA:
-        rc = put_word(section, operand - 1);
+        rc = put_word(section, operand - 1, abstract);
       }
     }
   }
 
   if (rc != 0) {
-    fprintf(stderr, "error at %s:%d\n", abstract->source, abstract->line);
+    fprintf(stderr, "error at %s:%d\n", abstract->source->path, abstract->line);
     rc = EHANDLED;
   }
 
@@ -303,30 +319,62 @@ int assemble(struct section *section, struct abstract *abstract, size_t length) 
   return rc;
 }
 
+long seek_to_line(struct source *source, int line) {
+  if (source == NULL) {
+    return 0;
+  } else if (line >= 1 && line <= source->lines) {
+    long offset = source->index[line - 1];
+    fseek(source->stream, offset, SEEK_SET);
+    return offset;
+  } else {
+    fprintf(stderr, "line out of range: %s:%d\n", source->path, line);
+    return -ERANGE;
+  }
+}
+
 /* TODO: make name tables available to lexer, or rather have
  * have a big name hash table */
-ssize_t lex(struct abstract **abs_ret, const char *source) {
-  FILE *src = fopen(source, "r");
+ssize_t lex(struct abstract **abs_ret, struct source *source) {
   struct abstract *buf = NULL;
   char srcline[1024];
   size_t bufsz = 0;
   off_t bufptr = 0;
   int rc = 0;
-  int line_num = 1;
+  int line_num;
 
   srcline[sizeof srcline - 1] = EOF;
 
-  if (src == NULL) {
-    perror("fopen");
-    return 1;
+  if (source->stream == NULL) {
+    source->stream = fopen(source->path, "r");
+    if (source->stream == NULL) {
+      perror("fopen");
+      return 1;
+    }
+  } else {
+    rewind(source->stream);
   }
 
-  for (;rc == 0 && !feof(src); line_num++) {
+  source->lines = 0;
+  source->indexsz = 40;
+  source->index = calloc(source->indexsz, sizeof *source->index);
+  if (source->index == NULL) {
+    rc = -errno;
+    goto finish;
+  }
+
+  for (line_num = 1;rc == 0 && !feof(source->stream); line_num++) {
     char *tok, *end, *saveptr, *line;
     struct abstract abstract = { .source = source, .line = line_num };
     enum lex state = LEX_START;
 
-    if (fgets(srcline, sizeof srcline, src) == NULL) {
+    if (source->lines == source->indexsz) {
+      source->indexsz <<= 1;
+      source->index = realloc(source->index, sizeof *source->index * source->indexsz);
+    }
+    source->index[line_num - 1] = ftell(source->stream);
+    source->lines++;
+
+    if (fgets(srcline, sizeof srcline, source->stream) == NULL) {
       rc = errno;
       goto finish;
     }
@@ -384,7 +432,6 @@ ssize_t lex(struct abstract **abs_ret, const char *source) {
 
 finish:
   *abs_ret = buf;
-  fclose(src);
   return rc == 0 ? bufptr : -rc;
 }
 
@@ -403,7 +450,7 @@ int write_section(const char *path, const struct section *section) {
 
   fprintf(file, "v2.0 raw\n");
   for (word = 0; word < section->org + section->length; word++) {
-    fprintf(file, "%08x\n", word < section->org ? fill_value : section->data[word - section->org]);
+    fprintf(file, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
   }
 
   fprintf(stderr, "  words in output = 0x%x\n", word);
@@ -416,32 +463,42 @@ int write_section(const char *path, const struct section *section) {
 int usage(FILE *to, int rc, const char *prog) {
   fprintf(to, "usage: %s [OPTIONS] [SOURCE]...\n"
     "OPTIONS\n"
-    "  -o, --output FILE    write object to FILE, default: %s\n"
-    "  -h, --help           output usage and exit\n",
+    "  -a, --listing        output listing\n"
+    "  -h, --help           output usage and exit\n"
+    "  -o, --output FILE    write object to FILE, default: %s\n",
     prog, DEFAULT_OUTPUT_FILE);
   return rc;
 }
 
 int main(int argc, char *argv[]) {
+  int i;
   int c;
+  addr_t a;
   int rc = 0;
+  int listing = 0;
+  int num_sources;
   int option_index;
   size_t abstract_len;
   struct section section = { 0 };
   struct abstract *abstract;
+  struct source *sources = NULL;
   const char *output = DEFAULT_OUTPUT_FILE;
 
   const struct option options[] = {
-    { "output", required_argument, 0, 'o' },
-    { "help",   no_argument,       0, 'h' },
+    { "output",  required_argument, 0,        'o' },
+    { "help",    no_argument,       0,        'h' },
+    { "listing", no_argument,       &listing, 'a' },
     { NULL }
   };
 
   init();
 
   do {
-    c = getopt_long(argc, argv, "ho:", options, &option_index);
+    c = getopt_long(argc, argv, "aho:", options, &option_index);
     switch (c) {
+    case 'a':
+      listing = c;
+      break;
     case 'h':
       return usage(stdout, 0, argv[0]);
     case 'o':
@@ -458,8 +515,18 @@ int main(int argc, char *argv[]) {
     rc = ENOENT;
   }
 
-  while (rc == 0 && optind < argc) {
-    rc = lex(&abstract, argv[optind++]);
+  num_sources = argc - optind;
+  sources = calloc(num_sources, sizeof *sources);
+  for (i = 0; rc == 0 && optind < argc; i++, optind++) {
+    struct source *source = sources + i;
+    char *str;
+
+    source->path = strdup(argv[optind]);
+    str = strdup(source->path);
+    source->leaf = strdup(basename(str));
+    free(str);
+
+    rc = lex(&abstract, source);
     if (rc < 0) {
       rc = -rc;
       free(abstract);
@@ -469,11 +536,46 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if(rc == 0 && listing) {
+    char srcline[60];
+
+    printf("Listing:\n");
+
+    for (a = section.org; a < section.org + section.length; a++) {
+      struct sectiondata *sd = section.data + (a - section.org);
+      char *str;
+      size_t len = -1;
+
+      if (sd->debug && seek_to_line(sd->debug->source, sd->debug->line) > 0) {
+        str = fgets(srcline, sizeof srcline, sd->debug->source->stream);
+        len = strlen(str);
+        if (str[len - 1] == '\n')
+          str[len - 1] = '\0';
+      }
+      printf("  %08x: %08x %10.10s:%-5d %-60.60s\n",
+             a, sd->value,
+             sd->debug && sd->debug->source ? sd->debug->source->leaf : "",
+             sd->debug && sd->debug->source ? sd->debug->line : 0,
+             len != -1 ? str : "(no source)");
+    }
+  }
+
   if (rc == 0)
     rc = write_section(output, &section);
 
   if (rc != 0 && rc != EHANDLED)
     fprintf(stderr, "babyas: %s\n", strerror(rc));
+
+  if (sources != NULL) {
+    for (i = 0; i < num_sources; i++) {
+      if (sources[i].stream != NULL) {
+        free(sources[i].path);
+        free(sources[i].leaf);
+        fclose(sources[i].stream);
+      }
+    }
+    free(sources);
+  }
 
   return rc == 0 ? 0 : 1;
 }
