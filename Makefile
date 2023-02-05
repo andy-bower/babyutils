@@ -4,7 +4,7 @@
 CFLAGS ?= -g -Wall -Werror
 LDFLAGS ?= -g
 
-babyas: babyas.o
+bas: bas.o
 
 clean:
-	$(RM) babyas babyas.o
+	$(RM) bas bas.o
