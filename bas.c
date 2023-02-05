@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* (c) Copyright 2023 Andrew Bower */
 
-/* Assembler for Manchester Baby.
- * Outputs logisim image format. */
+/* Assembler for Manchester Baby. */
 
 #include <unistd.h>
 #include <stdio.h>
@@ -16,6 +15,7 @@
 #include <libgen.h>
 
 #define WRITER_LOGISIM "logisim"
+#define WRITER_BINARY "binary"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_LOGISIM
@@ -463,7 +463,25 @@ static int logisim_writer(FILE *stream, const struct section *section) {
   fprintf(stream, "v2.0 raw\n");
   for (word = 0; word < section->org + section->length; word++) {
     rc = fprintf(stream, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
-    if (rc < 0) return -errno;
+    if (rc < 0)
+      return errno;
+  }
+
+  if (verbose) {
+    fprintf(stderr, "  words in output = 0x%x\n", word);
+  }
+
+  return 0;
+}
+
+static int binary_writer(FILE *stream, const struct section *section) {
+  addr_t word;
+  int rc;
+
+  for (word = 0; word < section->org + section->length; word++) {
+    rc = fwrite(&section->data[word - section->org].value, sizeof(word_t), 1, stream);
+    if (rc < 1)
+      return errno;
   }
 
   if (verbose) {
@@ -475,6 +493,7 @@ static int logisim_writer(FILE *stream, const struct section *section) {
 
 const static struct format formats[] = {
   { WRITER_LOGISIM, logisim_writer },
+  { WRITER_BINARY,  binary_writer },
 };
 #define formatsz (sizeof formats / sizeof *formats)
 
