@@ -487,7 +487,7 @@ int main(int argc, char *argv[]) {
     { "output",   required_argument, 0,        'o' },
     { "help",     no_argument,       0,        'h' },
     { "listing",  no_argument,       &listing, 'a' },
-    { "verbose#", no_argument,       &verbose, 'v' },
+    { "verbose",  no_argument,       &verbose, 'v' },
     { NULL }
   };
 
