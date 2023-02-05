@@ -485,6 +485,7 @@ int usage(FILE *to, int rc, const char *prog) {
     "OPTIONS\n"
     "  -a, --listing        output listing\n"
     "  -h, --help           output usage and exit\n"
+    "  -m, --map            output map\n"
     "  -o, --output FILE|-  write object to FILE, default: %s\n"
     "  -v, --verbose        output verbose information\n",
     prog, DEFAULT_OUTPUT_FILE);
@@ -496,6 +497,7 @@ int main(int argc, char *argv[]) {
   int c;
   addr_t a;
   int rc = 0;
+  int map = 0;
   int listing = 0;
   int num_sources;
   int option_index;
@@ -511,6 +513,7 @@ int main(int argc, char *argv[]) {
     { "output",   required_argument, 0,        'o' },
     { "help",     no_argument,       0,        'h' },
     { "listing",  no_argument,       &listing, 'a' },
+    { "map",      no_argument,       &map,     'm' },
     { "verbose",  no_argument,       &verbose, 'v' },
     { NULL }
   };
@@ -518,13 +521,16 @@ int main(int argc, char *argv[]) {
   init();
 
   do {
-    c = getopt_long(argc, argv, "ahvo:", options, &option_index);
+    c = getopt_long(argc, argv, "ahmvo:", options, &option_index);
     switch (c) {
     case 'a':
       listing = c;
       break;
     case 'h':
       return usage(stdout, 0, argv[0]);
+    case 'm':
+      map = c;
+      break;
     case 'o':
       output = optarg;
       break;
@@ -602,6 +608,14 @@ int main(int argc, char *argv[]) {
 
   if (rc == 0)
     rc = write_section(output, &section);
+
+  if(rc == 0 && map) {
+    printf("Sections:\n");
+    printf("  [%-8.8s  %-8.8s] %-8.8s\n",
+           "START","END", "LENGTH");
+    printf("  [%08x, %08x] %08x\n",
+           section.org, section.org + section.length - 1, section.length);
+  }
 
   if (rc != 0 && rc != EHANDLED)
     fprintf(stderr, "babyas: %s\n", strerror(rc));
