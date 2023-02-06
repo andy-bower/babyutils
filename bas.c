@@ -127,11 +127,13 @@ const struct instr I_JMP = { 00, 07, 1 };
 const struct instr I_SUB = { 01, 07, 1 };
 const struct instr I_LDN = { 02, 07, 1 };
 const struct instr I_SKN = { 03, 07, 0 };
+const struct instr I_JRP = { 04, 07, 1 };
 const struct instr I_STO = { 06, 07, 1 };
 const struct instr I_HLT = { 07, 07, 0 };
 
 struct mnemonic baby[] = {
   { "JMP", M_INSTR, .ins=&I_JMP },
+  { "JRP", M_INSTR, .ins=&I_JRP },
   { "SUB", M_INSTR, .ins=&I_SUB },
   { "LDN", M_INSTR, .ins=&I_LDN },
   { "SKN", M_INSTR, .ins=&I_SKN },
