@@ -10,6 +10,7 @@ This is an assembler for a particular teaching variant of the Manchester Baby an
 ## Options
 
 ```
+usage: ./bas [OPTIONS] [SOURCE|-]...
 OPTIONS
   -a, --listing            output listing
   -h, --help               output usage and exit
