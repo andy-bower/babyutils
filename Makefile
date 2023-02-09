@@ -9,9 +9,9 @@ EXES=bas
 
 all: $(EXES)
 
-install:
+install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/man/man8
-	gzip -c bas.8 > $(DESTDIR)$(PREFIX)/share/man/man8/bas.8.gz
+	gzip -c bas.1 > $(DESTDIR)$(PREFIX)/share/man/man1/bas.1.gz
 	install -m 755 -t $(DESTDIR)$(PREFIX)/bin $(EXES)
 
 bas: bas.o

@@ -1,6 +1,6 @@
 .Dd February 9, 2023
 .Os Linux
-.Dt BAS 8 SMM
+.Dt BAS 1 PRM
 .Sh NAME
 bas \- Assembler for Manchester Baby
 .Sh SYNOPSIS
@@ -21,15 +21,15 @@ allows labels for addresses to be defined and used as symbols in place of
 operands.
 .Pp
 A new directive,
-.Ql EJA
-, encodes a data work that points to the instruction before the given location.
+.Ql EJA ,
+encodes a data work that points to the instruction before the given location.
 .Ss Options
 .Bl -tag -width OOxxxxoutput-formatxFMTx
 .It Fl h
 Show usage
-.It Fl a, --listing
+.It Fl a, -listing
 Output listing
-.It Fl m, --map
+.It Fl m, -map
 Output map
 .It Fl o, -output Ar FILE
 Write object output to
@@ -38,7 +38,7 @@ or stdout if
 .Ql - .
 (Default
 .Ql b.out . )
-.It Fl O, --output-format Ar FMT
+.It Fl O, -output-format Ar FMT
 Use
 .Ar FMT
 as object file format.
