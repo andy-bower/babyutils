@@ -1,0 +1,69 @@
+.Dd February 9, 2023
+.Os Linux
+.Dt BAS 8 SMM
+.Sh NAME
+bas \- Assembler for Manchester Baby
+.Sh SYNOPSIS
+.Nm bas
+.Fl h
+.Nm bas
+.Op Fl a
+.Op Fl o Ar FILE
+.Op Fl O Ar FMT
+.Op Fl v
+.Ar SOURCE...
+.Sh DESCRIPTION
+Assemble machine code for the Manchester Baby 'SSEM' from one or more source
+files.
+.Pp
+.Nm
+allows labels for addresses to be defined and used as symbols in place of
+operands.
+.Pp
+A new directive,
+.Ql EJA
+, encodes a data work that points to the instruction before the given location.
+.Ss Options
+.Bl -tag -width OOxxxxoutput-formatxFMTx
+.It Fl h
+Show usage
+.It Fl a, --listing
+Output listing
+.It Fl m, --map
+Output map
+.It Fl o, -output Ar FILE
+Write object output to
+.Ar FILE ,
+or stdout if
+.Ql - .
+(Default
+.Ql b.out . )
+.It Fl O, --output-format Ar FMT
+Use
+.Ar FMT
+as object file format.
+(Default
+.Ql logisim . )
+.It Fl v, -verbose
+Output verbose information
+.El
+.Ss Output Formats
+.Bl -tag -width logisimx
+.It Ic logisim
+Logisim RAM image format (default)
+.It Ic binary
+Binary in host endianness
+.El
+.Sh BUGS
+Please raise bug reports at:
+.Lk https://github.com/andy-bower/babyutils/issues
+.Sh EXAMPLES
+Assemble a source file to
+.Ql b.out
+with assembly listing to the terminal.
+
+.Dl bas -a test/ldiv.asm
+.Sh AUTHORS
+.An Andrew Bower
+.Sh COPYRIGHT
+Copyright (c) 2023 Andrew Bower
