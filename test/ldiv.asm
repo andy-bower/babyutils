@@ -4,7 +4,7 @@
 00: NUM 19         -- jump address; encodes SKN, AKA NOP at start
     LDN dividend   -- Accumulator := -A
     STO dividend   -- Store as -A
-    LDN dividend   -- Accumulator := -(-A) i.e., +A
+03: LDN dividend   -- Accumulator := -(-A) i.e., +A
     SUB divisor_fp -- Subtract B*2^n ; Accumulator = A - B*2^n
     SKN            -- Skip if (A-B*2^n) is Negative
 06: JMP 0          --   otherwise go to line 20 ( A-B*2^n >= 0 )

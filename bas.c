@@ -366,7 +366,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
       source->noclose = false;
       if (source->stream == NULL) {
         perror("fopen");
-        return 1;
+        return -EHANDLED;
       }
     }
   } else if (source->seekable) {
@@ -562,7 +562,7 @@ int main(int argc, char *argv[]) {
   int num_sources;
   int option_index;
   struct section section = { 0 };
-  struct abstract *abstract;
+  struct abstract *abstract = NULL;
   size_t abstract_count;
   struct source *sources = NULL;
   struct symbol *symbols = NULL;
@@ -639,7 +639,6 @@ int main(int argc, char *argv[]) {
     rc = lex(&abstract, source);
     if (rc < 0) {
       rc = -rc;
-      free(abstract);
     } else {
       abstract_count = rc;
 
@@ -686,7 +685,7 @@ int main(int argc, char *argv[]) {
   if (rc == 0)
     rc = write_section(output, &section, format);
 
-  if(rc == 0 && map) {
+  if (rc == 0 && map) {
     printf("Sections:\n");
     printf("  [%-8.8s  %-8.8s] %-8.8s\n",
            "START","END", "LENGTH");

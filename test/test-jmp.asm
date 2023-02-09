@@ -1,3 +1,6 @@
+-- # SPDX-License-Identifier: MIT
+-- # (c) Copyright 2023 Andrew Bower
+--
 -- Test JMP instruction
 
   ldn dat1
