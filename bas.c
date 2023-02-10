@@ -9,10 +9,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 #include <getopt.h>
 #include <errno.h>
 #include <dirent.h>
 #include <libgen.h>
+#include <sys/types.h>
+
+#include "arch.h"
 
 #define WRITER_LOGISIM "logisim"
 #define WRITER_BINARY "binary"
@@ -75,12 +79,6 @@ struct section {
   struct sectiondata *data;
 };
 
-struct instr {
-  uint32_t opcode;
-  uint32_t mask;
-  int operands;
-};
-
 enum mnem_type {
   M_INSTR,
   M_DIRECTIVE,
@@ -122,14 +120,6 @@ struct format {
   const char *name;
   int (*writer)(FILE *stream, const struct section *section);
 };
-
-const struct instr I_JMP = { 00, 07, 1 };
-const struct instr I_SUB = { 01, 07, 1 };
-const struct instr I_LDN = { 02, 07, 1 };
-const struct instr I_SKN = { 03, 07, 0 };
-const struct instr I_JRP = { 04, 07, 1 };
-const struct instr I_STO = { 06, 07, 1 };
-const struct instr I_HLT = { 07, 07, 0 };
 
 struct mnemonic baby[] = {
   { "JMP", M_INSTR, .ins=&I_JMP },

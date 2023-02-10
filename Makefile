@@ -9,12 +9,22 @@ MANDIR ?= share/man
 DOCDIR ?= share/doc/$(name)
 LICENSESDIR ?= share/doc/$(name)
 
-EXES=bas
 name=babyutils
+
+.PHONY: all all_targets install
+all: all_targets
+
+include libbaby/lib.mk
+
+EXES=bas bsim
+CFLAGS+=$(addprefix -I,$(INCDIRS))
+LDFLAGS+=-L.
+LIBFILES=$(foreach lib,$(LIBS),lib$(lib).a)
+LDLIBS=$(addprefix -l,$(LIBS))
 
 r:=$(DESTDIR)$(PREFIX)
 
-all: $(EXES)
+all_targets: $(LIBFILES) $(EXES)
 
 install: all
 	mkdir -p $r/bin
@@ -35,5 +45,7 @@ uninstall:
 
 bas: bas.o
 
+bsim: bsim.o
+
 clean:
-	$(RM) bas bas.o
+	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o
