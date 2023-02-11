@@ -31,9 +31,9 @@ typedef uint32_t addr_t;
 typedef int32_t word_t;
 
 struct segment {
-	addr_t load_address;
-	addr_t exec_address;
-	addr_t length;
+  addr_t load_address;
+  addr_t exec_address;
+  addr_t length;
 };
 
 struct instruction {
@@ -219,24 +219,24 @@ static void sim_cycle(struct mc *mc) {
 }
 
 static int binary_stat(struct object_file *file, struct segment *segment) {
-	struct stat statbuf;
- 	int rc;
+  struct stat statbuf;
+  int rc;
 
   assert(segment);
 
   rc = stat(file->path, &statbuf);
-	if (rc == -1)
-		return rc;
+  if (rc == -1)
+    return rc;
  
   segment->load_address = 0x0;
   segment->exec_address = 0x0;
-	segment->length = statbuf.st_size / sizeof(word_t);
+  segment->length = statbuf.st_size / sizeof(word_t);
 
-	return 0;
+  return 0;
 }
 
 static int binary_load(struct object_file *file, const struct segment *segment, struct vm *vm) {
- 	int rc;
+  int rc;
   int i;
 
   assert(file);
@@ -262,7 +262,7 @@ static int binary_load(struct object_file *file, const struct segment *segment, 
     write_word(vm, segment->load_address + i, data);
   }
 
-	return 0;
+  return 0;
 }
 
 static int binary_close(struct object_file *file) {
@@ -304,17 +304,17 @@ int main(int argc, char *argv[]) {
   int c;
   int rc = 0;
   int option_index;
-	struct mc mc = { 0 };
-	struct page page0 = { 0 };
+  struct mc mc = { 0 };
+  struct page page0 = { 0 };
   struct segment segment = { 0 };
   const struct format *format;
-	struct object_file exe = { 0 };
-	addr_t requested_memory;
-	addr_t memory_size = DEFAULT_MEMORY_SIZE;
+  struct object_file exe = { 0 };
+  addr_t requested_memory;
+  addr_t memory_size = DEFAULT_MEMORY_SIZE;
   const char *input_format = DEFAULT_INPUT_FORMAT;
 
   const struct option options[] = {
-		{ "memory",        required_argument, 0,        'm' },
+    { "memory",        required_argument, 0,        'm' },
     { "input-format",  required_argument, 0,        'I' },
     { "output",        required_argument, 0,        'o' },
     { "help",          no_argument,       0,        'h' },
@@ -332,9 +332,9 @@ int main(int argc, char *argv[]) {
       return usage(stdout, 0, argv[0]);
     case 'm':
       /* Round up to power of two, default being the minimum */
-			for (requested_memory = strtoul(optarg, NULL, 10);
-					 memory_size < requested_memory;
-					 memory_size <<=1);
+      for (requested_memory = strtoul(optarg, NULL, 10);
+           memory_size < requested_memory;
+           memory_size <<=1);
       break;
     case 'v':
       verbose = c;
@@ -363,7 +363,7 @@ int main(int argc, char *argv[]) {
 
   if (argc - optind != 1)
     return usage(stderr, 1, argv[0]);
-	exe.path = argv[optind++];
+  exe.path = argv[optind++];
 
   rc = format->stat(&exe, &segment);
   if (rc != 0)
@@ -374,8 +374,8 @@ int main(int argc, char *argv[]) {
       page0.size <<= 1);
   page0.data = calloc(page0.size, sizeof *page0.data);
   mc.vm.page0.base = 0;
-	mc.vm.page0.size = page0.size;
-	mc.vm.page0.phys = &page0;
+  mc.vm.page0.size = page0.size;
+  mc.vm.page0.phys = &page0;
 
   memory_checks(&mc.vm);
 
