@@ -1,13 +1,13 @@
-# Baby Assembler
+# Baby assembler and simulator
 
-This is an assembler for a particular teaching variant of the Manchester Baby and outputs binary objects in the Logisim RAM image format.
+This is an assembler and simulator for a particular teaching variant of the Manchester Baby and outputs binary objects in the Logisim RAM image format.
 
 ## Unique features
 
 - Labels are accepted in place of addresses.
 - New assembler directive `EJA` standing for Effective Jump Address, which stores a data word in the object file that points to the instruction before the given location, which is either an address or symbol.
 
-## Options
+## Assembler Options
 
 ```
 usage: ./bas [OPTIONS] [SOURCE|-]...
@@ -27,4 +27,5 @@ OPTIONS
 ```
 make
 ./bas -a -o ldiv.out test/ldiv.asm
+./bsim ldiv.out
 ```
