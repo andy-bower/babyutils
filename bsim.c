@@ -159,8 +159,8 @@ static inline void write_word(struct vm *vm, addr_t addr, word_t value) {
 static void sim_cycle(struct mc *mc) {
   word_t opcode;
   word_t operand;
-  word_t data;
-  word_t next_pc;
+  word_t data = 0;    // Appease compiler
+  word_t next_pc = 0; // Appease compiler
 
   if (verbose)
     dump_state(mc);
