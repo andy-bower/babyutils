@@ -379,6 +379,9 @@ int main(int argc, char *argv[]) {
 
   memory_checks(&mc.vm);
 
+  fprintf(stderr, "Mapped page of %d words of RAM\n",
+          page0.size);
+
   rc = format->load(&exe, &segment, &mc.vm);
   if (rc != 0)
     goto finish;
