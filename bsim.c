@@ -14,6 +14,7 @@
 #include <dirent.h>
 #include <libgen.h>
 #include <assert.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -299,6 +300,42 @@ int usage(FILE *to, int rc, const char *prog) {
   return rc;
 }
 
+struct handshake {
+  int sigint;
+  int sigquit;
+};
+
+static struct handshake sig_req = { 0, 0};
+
+static void signal_handler(int sig, siginfo_t *info, void *ucontext) {
+  if (sig == SIGINT)
+     sig_req.sigint++;
+  else if (sig == SIGQUIT)
+     sig_req.sigquit++;
+}
+
+static bool poll_sigint(struct handshake *sig_ack) {
+  int req = sig_req.sigint;
+
+  if (sig_ack->sigint != req) {
+    sig_ack->sigint = req;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static bool poll_sigquit(struct handshake *sig_ack) {
+  int req = sig_req.sigquit;
+
+  if (sig_ack->sigquit != req) {
+    sig_ack->sigquit = req;
+    return true;
+  } else {
+    return false;
+  }
+}
+
 int main(int argc, char *argv[]) {
   int i;
   int c;
@@ -312,6 +349,7 @@ int main(int argc, char *argv[]) {
   addr_t requested_memory;
   addr_t memory_size = DEFAULT_MEMORY_SIZE;
   const char *input_format = DEFAULT_INPUT_FORMAT;
+  struct handshake sig_ack = { 0, 0};
 
   const struct option options[] = {
     { "memory",        required_argument, 0,        'm' },
@@ -386,8 +424,27 @@ int main(int argc, char *argv[]) {
   if (rc != 0)
     goto finish;
 
-  while (!mc.stopped)
-    sim_cycle(&mc);
+  /* Handle signals over main simulation loop. */
+  {
+    struct sigaction new_action = { 0 };
+    struct sigaction old_action_int;
+    struct sigaction old_action_quit;
+
+    new_action.sa_sigaction = signal_handler;
+    sigemptyset(&new_action.sa_mask);
+    new_action.sa_flags = 0;
+    sigaction(SIGINT, &new_action, &old_action_int);
+    sigaction(SIGQUIT, &new_action, &old_action_quit);
+
+    while (!mc.stopped && !poll_sigquit(&sig_ack)) {
+      sim_cycle(&mc);
+      if (poll_sigint(&sig_ack))
+        dump_state(&mc);
+    }
+
+    sigaction(SIGINT, &old_action_int, NULL);
+    sigaction(SIGQUIT, &old_action_quit, NULL);
+  }
 
   dump_vm(&mc.vm);
   dump_state(&mc);

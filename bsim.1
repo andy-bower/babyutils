@@ -15,6 +15,14 @@ bsim \- Simulator for Manchester Baby
 Simulate the Manchester Baby 'SSEM' running given machine code input file.
 .Pp
 When the STOP lamp is lit the simulation terminates printing out machine state.
+.Ss Signals
+.Nm
+dumps the machine registers and cycle count on receipt of
+.Ql SIGINT
+(Ctrl-C).
+.Pp
+.Ql SIGQUIT
+(Ctrl-\\) terminates the simulation early.
 .Ss Options
 .Bl -tag -width OOxxxxoutput-formatxFMTx
 .It Fl h
