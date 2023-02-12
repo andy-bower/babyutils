@@ -284,11 +284,11 @@ int usage(FILE *to, int rc, const char *prog) {
   fprintf(to, "usage: %s [OPTIONS] OBJECT\n"
     "OPTIONS\n"
     "  -h, --help               output usage and exit\n"
-    "  -m, --memory             memory size in words, default: %d\n"
-    "  -O, --output-format FMT  use FMT output format, default: %s\n"
+    "  -m, --memory WORDS       memory size in words, default: %d\n"
+    "  -I, --input-format FMT   use FMT output format, default: %s\n"
     "  -v, --verbose            output verbose information\n"
     "\n"
-    "%s: supported output formats:",
+    "%s: supported input formats:",
     prog, DEFAULT_MEMORY_SIZE, DEFAULT_INPUT_FORMAT,
     prog);
 
@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
   struct mc mc = { 0 };
   struct page page0 = { 0 };
   struct segment segment = { 0 };
-  const struct format *format;
+  const struct format *format = NULL;
   struct object_file exe = { 0 };
   addr_t requested_memory;
   addr_t memory_size = DEFAULT_MEMORY_SIZE;
@@ -316,14 +316,13 @@ int main(int argc, char *argv[]) {
   const struct option options[] = {
     { "memory",        required_argument, 0,        'm' },
     { "input-format",  required_argument, 0,        'I' },
-    { "output",        required_argument, 0,        'o' },
     { "help",          no_argument,       0,        'h' },
     { "verbose",       no_argument,       &verbose, 'v' },
     { NULL }
   };
 
   do {
-    c = getopt_long(argc, argv, "hvI:", options, &option_index);
+    c = getopt_long(argc, argv, "hvm:I:", options, &option_index);
     switch (c) {
     case 'I':
       input_format = optarg;
@@ -352,8 +351,9 @@ int main(int argc, char *argv[]) {
   if (i == formatsz) {
     fprintf(stderr, "No such format: %s\n", input_format);
     rc = EHANDLED; /* EINVAL */
+    goto finish;
   } else {
-   format = formats + i;
+    format = formats + i;
   }
 
   if (optind == argc) {
@@ -379,7 +379,7 @@ int main(int argc, char *argv[]) {
 
   memory_checks(&mc.vm);
 
-  fprintf(stderr, "Mapped page of %d words of RAM\n",
+  fprintf(stderr, "Mapped fully aliased page of %d words of RAM\n",
           page0.size);
 
   rc = format->load(&exe, &segment, &mc.vm);
@@ -389,8 +389,8 @@ int main(int argc, char *argv[]) {
   while (!mc.stopped)
     sim_cycle(&mc);
 
-  dump_state(&mc);
   dump_vm(&mc.vm);
+  dump_state(&mc);
 
 finish:
   if (rc != 0 && rc != EHANDLED)
@@ -399,7 +399,8 @@ finish:
   if (page0.data != NULL)
     free(page0.data);
 
-  format->close(&exe);
+  if (format != NULL)
+    format->close(&exe);
 
   return rc == 0 ? 0 : 1;
 }
