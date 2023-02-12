@@ -1,0 +1,51 @@
+.Dd February 12, 2023
+.Os Linux
+.Dt BSIM 1 PRM
+.Sh NAME
+bsim \- Simulator for Manchester Baby
+.Sh SYNOPSIS
+.Nm bsim
+.Fl h
+.Nm
+.Op Fl m Ar WORDS
+.Op Fl I Ar FMT
+.Op Fl v
+.Ar OBJECT
+.Sh DESCRIPTION
+Simulate the Manchester Baby 'SSEM' running given machine code input file.
+.Pp
+When the STOP lamp is lit the simulation terminates printing out machine state.
+.Ss Options
+.Bl -tag -width OOxxxxoutput-formatxFMTx
+.It Fl h
+Show usage
+.It Fl m, -memory Ar WORDS
+.Ar FILE ,
+or stdout if
+.Ql - .
+(Default
+.Ql b.out . )
+.It Fl I, -input-format Ar FMT
+Use
+.Ar FMT
+as object file format.
+(Default
+.Ql binary . )
+.It Fl v, -verbose
+Output verbose information
+.El
+.Ss Input Formats
+.Bl -tag -width logisimx
+.It Ic binary
+Binary in host endianness (default)
+.El
+.Sh BUGS
+Please raise bug reports at:
+.Lk https://github.com/andy-bower/babyutils/issues
+.Sh EXAMPLES
+Simulate Baby machine code:
+.Dl bsim b.out
+.Sh AUTHORS
+.An Andrew Bower
+.Sh COPYRIGHT
+Copyright (c) 2023 Andrew Bower

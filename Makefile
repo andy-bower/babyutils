@@ -32,6 +32,7 @@ install: all
 	mkdir -p $r/share/doc/babyutils/examples
 	[ -z "$(LICENSESDIR)" ] || mkdir -p $r/$(LICENSESDIR)
 	gzip -c bas.1 > $r/$(MANDIR)/man1/bas.1.gz
+	gzip -c bsim.1 > $r/$(MANDIR)/man1/bsim.1.gz
 	$(INSTALL) -m 755 -t $r/bin $(EXES)
 	$(INSTALL) -m 644 -t $r/$(DOCDIR)/examples test/*.asm
 	$(INSTALL) -m 644 -t $r/$(DOCDIR) README.md
@@ -39,7 +40,9 @@ install: all
 
 uninstall:
 	$(RM) $r/bin/bas
-	$(RM) $r/$(MANDIR)/man1/bas1.gz
+	$(RM) $r/bin/sim
+	$(RM) $r/$(MANDIR)/man1/bas.1.gz
+	$(RM) $r/$(MANDIR)/man1/bsim.1.gz
 	$(RM) -r $r/$(DOCDIR)
 	$(RM) -r $r/$(LICENSESDIR)
 
