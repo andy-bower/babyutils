@@ -426,15 +426,15 @@ int main(int argc, char *argv[]) {
 
   /* Handle signals over main simulation loop. */
   {
-    struct sigaction new_action = { 0 };
+    struct sigaction new_action_int = { 0 };
+    struct sigaction new_action_quit = { 0 };
     struct sigaction old_action_int;
     struct sigaction old_action_quit;
 
-    new_action.sa_sigaction = signal_handler;
-    sigemptyset(&new_action.sa_mask);
-    new_action.sa_flags = 0;
-    sigaction(SIGINT, &new_action, &old_action_int);
-    sigaction(SIGQUIT, &new_action, &old_action_quit);
+    new_action_int.sa_sigaction = signal_handler;
+    new_action_quit.sa_sigaction = signal_handler;
+    sigaction(SIGINT, &new_action_int, &old_action_int);
+    sigaction(SIGQUIT, &new_action_quit, &old_action_quit);
 
     while (!mc.stopped && !poll_sigquit(&sig_ack)) {
       sim_cycle(&mc);
