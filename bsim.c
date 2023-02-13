@@ -160,7 +160,6 @@ static void sim_cycle(struct mc *mc) {
   word_t opcode;
   word_t operand;
   word_t data = 0;    // Appease compiler
-  word_t next_pc = 0; // Appease compiler
 
   if (verbose)
     dump_state(mc);
@@ -180,6 +179,7 @@ static void sim_cycle(struct mc *mc) {
   case OP_LDN:
   case OP_SUB:
   case OP_JMP:
+  case OP_JRP:
     data = read_word(&mc->vm, operand);
     break;
   case OP_STO:
@@ -204,17 +204,16 @@ static void sim_cycle(struct mc *mc) {
   switch (opcode) {
   case OP_SKN:
     if (mc->regs.ac < 0)
-      next_pc = mc->regs.ci + 1;
-    else
-      next_pc = mc->regs.ci;
+      mc->regs.ci++;
     break;
   case OP_JMP:
-    next_pc = data;
+    mc->regs.ci = data;
     break;
-  default:
-    next_pc = mc->regs.ci;
+  case OP_JRP:
+    mc->regs.ci += data;
+    break;
   }
-  mc->regs.ci = next_pc + 1;
+  mc->regs.ci++;
 
   mc->cycles++;
 }

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 # (c) Copyright 2023 Andrew Bower
 
-CFLAGS ?= -g -Wall -Werror
-LDFLAGS ?= -g
+CFLAGS ?= -O2 -g -Wall -Werror
+LDFLAGS ?= -O2 -g
 PREFIX ?= /usr/local
 INSTALL ?= install
 MANDIR ?= share/man
