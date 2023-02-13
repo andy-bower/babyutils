@@ -26,6 +26,11 @@ OPTIONS
 
 ```
 make
-./bas -a -o ldiv.out test/ldiv.asm
-./bsim ldiv.out
+./bas -a test/test-jmp.asm
+./bsim b.out
 ```
+
+## Author
+
+(c) Copyright 2023 Andrew Bower
+SPDX-License-Identifier: MIT
