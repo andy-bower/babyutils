@@ -11,7 +11,7 @@ LICENSESDIR ?= share/doc/$(name)
 
 name=babyutils
 
-.PHONY: all all_targets install
+.PHONY: all all_targets install test
 all: all_targets
 
 include libbaby/lib.mk
@@ -51,4 +51,8 @@ bas: bas.o
 bsim: bsim.o
 
 clean:
-	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o
+	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o test/*.out
+
+test: bas bsim
+	./bas -m -O binary -o test/test-jmp.out test/test-jmp.asm
+	timeout -s QUIT 1 ./bsim test/test-jmp.out | grep '^0000001c: 00000011 00000011 00000022'
