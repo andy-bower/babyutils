@@ -3,7 +3,7 @@
 
 CFLAGS ?= -O2 -g -Wall -Werror
 LDFLAGS ?= -O2 -g
-PREFIX ?= /usr/local
+prefix ?= /usr/local
 INSTALL ?= install
 MANDIR ?= share/man
 DOCDIR ?= share/doc/$(name)
@@ -22,7 +22,7 @@ LDFLAGS+=-L.
 LIBFILES=$(foreach lib,$(LIBS),lib$(lib).a)
 LDLIBS=$(addprefix -l,$(LIBS))
 
-r:=$(DESTDIR)$(PREFIX)
+r:=$(DESTDIR)$(prefix)
 
 all_targets: $(LIBFILES) $(EXES)
 
