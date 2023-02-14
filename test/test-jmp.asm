@@ -3,6 +3,7 @@
 --
 -- Test JMP instruction
 
+01:
   ldn dat1
   sto check1
   jmp todest1

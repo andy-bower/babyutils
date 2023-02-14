@@ -3,6 +3,7 @@
 --
 -- Count 2^31 times
 
+01:
   ldn m1
 loop:
   sub m1

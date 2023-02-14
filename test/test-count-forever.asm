@@ -3,6 +3,7 @@
 --
 -- Test Infinite counting
 
+01:
   ldn ctr
 loop:
   sub m1

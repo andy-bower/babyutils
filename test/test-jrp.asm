@@ -3,6 +3,7 @@
 --
 -- Test JRP instruction
 
+01:
   ldn dat1
   sto check1
   jrp todest1

@@ -165,7 +165,7 @@ static void sim_cycle(struct mc *mc) {
     dump_state(mc);
 
   /* t1: Fetch */
-  mc->regs.pi = read_word(&mc->vm, mc->regs.ci);
+  mc->regs.pi = read_word(&mc->vm, ++mc->regs.ci);
 
   /* t2: Decode */
   opcode = mc->regs.pi & I_JMP.mask;
@@ -213,7 +213,6 @@ static void sim_cycle(struct mc *mc) {
     mc->regs.ci += data;
     break;
   }
-  mc->regs.ci++;
 
   mc->cycles++;
 }
