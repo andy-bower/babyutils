@@ -168,11 +168,8 @@ static void sim_cycle(struct mc *mc) {
   mc->regs.pi = read_word(&mc->vm, ++mc->regs.ci);
 
   /* t2: Decode */
-  opcode = mc->regs.pi & I_JMP.mask;
-  if (mc->regs.pi >= 0)
-    operand = mc->regs.pi >> 3;
-  else
-    operand = -((-mc->regs.pi) >> 3);
+  opcode = (mc->regs.pi & OPCODE_MASK) >> OPCODE_POS;
+	operand = (mc->regs.pi & OPERAND_MASK) >> OPERAND_POS;
 
   /* t3: Execute - data access */
   switch (opcode) {
@@ -408,6 +405,14 @@ int main(int argc, char *argv[]) {
   for(page0.size = memory_size;
       page0.size < segment.length;
       page0.size <<= 1);
+
+  if (page0.size > 0x2000) {
+    fprintf(stderr, "%d words exceeds maximum store size of %d\n",
+            page0.size, 0x2000);
+    rc = EHANDLED; /* ENOMEM */
+    goto finish;
+  }
+
   page0.data = calloc(page0.size, sizeof *page0.data);
   mc.vm.page0.base = 0;
   mc.vm.page0.size = page0.size;

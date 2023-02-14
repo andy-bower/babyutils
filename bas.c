@@ -199,7 +199,6 @@ static int put_word(struct section *section, word_t word, struct abstract *abs) 
 int assemble_one(struct section *section,
                  struct symbol *symbols, size_t symbol_count,
                  struct abstract *abstract, bool first_pass) {
-  word_t word = 0;
   num_t operand;
   int rc = 0;
 
@@ -246,9 +245,9 @@ int assemble_one(struct section *section,
     }
 
     if (m->type == M_INSTR) {
-      word = (word & ~m->ins->mask) | (m->ins->opcode & m->ins->mask);
+      word_t word = (m->ins->opcode << OPCODE_POS) & OPCODE_MASK;
       if (m->ins->operands == 1)
-        word |= operand << 3;
+        word |= (operand << OPERAND_POS) & OPERAND_MASK;
       put_word(section, word, abstract);
     } else if (m->type == M_DIRECTIVE) {
       switch (m->dir) {

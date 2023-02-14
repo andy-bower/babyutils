@@ -10,7 +10,6 @@
 
 struct instr {
   uint32_t opcode;
-  uint32_t mask;
   int operands;
 };
 
@@ -19,8 +18,14 @@ struct instr {
 #define OP_LDN 02
 #define OP_SKN 03
 #define OP_JRP 04
+#define OP_SUB_ALIAS 05
 #define OP_STO 06
 #define OP_HLT 07
+
+#define OPCODE_MASK  0x0000E000
+#define OPERAND_MASK 0x00001FFF
+#define OPCODE_POS   13
+#define OPERAND_POS  0
 
 extern const struct instr I_JMP;
 extern const struct instr I_SUB;
