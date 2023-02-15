@@ -20,6 +20,7 @@
 
 #define WRITER_LOGISIM "logisim"
 #define WRITER_BINARY "binary"
+#define WRITER_BITS "bits"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_BINARY
@@ -465,6 +466,28 @@ static int logisim_writer(FILE *stream, const struct section *section) {
   return 0;
 }
 
+static int bits_writer(FILE *stream, const struct section *section) {
+  addr_t word;
+  word_t tst;
+  int rc;
+
+  for (word = 0; word < section->org + section->length; word++) {
+    word_t val = word < section->org ? fill_value : section->data[word - section->org].value;
+    for (tst = 0x80000000UL; tst != 0; tst >>= 1)
+      if ((rc = fputc(val & tst ? '1' : '0', stream)) == EOF)
+        return errno;
+    rc = fputc('\n', stream);
+    if (rc == EOF)
+      return errno;
+  }
+
+  if (verbose) {
+    fprintf(stderr, "  words in output = 0x%x\n", word);
+  }
+
+  return 0;
+}
+
 static int binary_writer(FILE *stream, const struct section *section) {
   addr_t word;
   int rc;
@@ -485,6 +508,7 @@ static int binary_writer(FILE *stream, const struct section *section) {
 const static struct format formats[] = {
   { WRITER_LOGISIM, logisim_writer },
   { WRITER_BINARY,  binary_writer },
+  { WRITER_BITS,    bits_writer },
 };
 #define formatsz (sizeof formats / sizeof *formats)
 
