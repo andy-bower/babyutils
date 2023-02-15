@@ -391,8 +391,9 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
       rc = errno;
       goto finish;
     }
-    if (srcline[sizeof srcline - 1] != EOF) {
-      rc = E2BIG;
+    if (!feof(source->stream) && !strchr(srcline, '\n')) {
+      fprintf(stderr, "%s:%d: line too long\n", source->leaf, line_num);
+      rc = EHANDLED;
       goto finish;
     }
 
