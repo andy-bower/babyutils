@@ -24,6 +24,8 @@ OPTIONS
 
 ## Example
 
+See the assembly source files in the `test` directory for examples of accepted syntax.
+
 ```
 make
 ./bas -a test/test-jmp.asm
