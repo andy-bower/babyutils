@@ -22,6 +22,8 @@
 #define WRITER_BINARY "binary"
 #define WRITER_BITS "bits"
 
+#define BITS_SSEM 1
+
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_BINARY
 
@@ -119,7 +121,8 @@ enum lex {
 
 struct format {
   const char *name;
-  int (*writer)(FILE *stream, const struct section *section);
+  int (*writer)(FILE *stream, const struct section *section, int flags);
+  const int flags;
 };
 
 struct mnemonic baby[] = {
@@ -449,7 +452,7 @@ finish:
   return rc == 0 ? bufptr : -rc;
 }
 
-static int logisim_writer(FILE *stream, const struct section *section) {
+static int logisim_writer(FILE *stream, const struct section *section, int flags) {
   addr_t word;
   int rc;
 
@@ -467,14 +470,15 @@ static int logisim_writer(FILE *stream, const struct section *section) {
   return 0;
 }
 
-static int bits_writer(FILE *stream, const struct section *section) {
+static int bits_writer(FILE *stream, const struct section *section, int flags) {
   addr_t word;
   word_t tst;
   int rc;
+  bool ssem = flags & BITS_SSEM;
 
   for (word = 0; word < section->org + section->length; word++) {
     word_t val = word < section->org ? fill_value : section->data[word - section->org].value;
-    for (tst = 0x80000000UL; tst != 0; tst >>= 1)
+    for (tst = ssem ? 1 : 0x80000000UL; tst != 0; tst = ssem ? tst << 1 : tst >> 1)
       if ((rc = fputc(val & tst ? '1' : '0', stream)) == EOF)
         return errno;
     rc = fputc('\n', stream);
@@ -489,7 +493,7 @@ static int bits_writer(FILE *stream, const struct section *section) {
   return 0;
 }
 
-static int binary_writer(FILE *stream, const struct section *section) {
+static int binary_writer(FILE *stream, const struct section *section, int flags) {
   addr_t word;
   int rc;
 
@@ -507,9 +511,10 @@ static int binary_writer(FILE *stream, const struct section *section) {
 }
 
 const static struct format formats[] = {
-  { WRITER_LOGISIM, logisim_writer },
-  { WRITER_BINARY,  binary_writer },
-  { WRITER_BITS,    bits_writer },
+  { WRITER_LOGISIM,      logisim_writer, 0 },
+  { WRITER_BINARY,       binary_writer,  0 },
+  { WRITER_BITS,         bits_writer,    0 },
+  { WRITER_BITS ".ssem", bits_writer,    BITS_SSEM },
 };
 #define formatsz (sizeof formats / sizeof *formats)
 
@@ -531,7 +536,7 @@ static int write_section(const char *path, const struct section *section, const 
     fprintf(stderr, "Writing section\n  org = 0x%x\n  length = 0x%x\n",
             section->org, section->length);
 
-  rc = format->writer(file, section);
+  rc = format->writer(file, section, format->flags);
 
   if (verbose) {
     fprintf(stderr, "Written %s\n", path);
