@@ -14,12 +14,12 @@ struct instr {
 };
 
 #define OP_JMP 00
-#define OP_SUB 01
+#define OP_SUB 04
 #define OP_LDN 02
-#define OP_SKN 03
-#define OP_JRP 04
+#define OP_SKN 06
+#define OP_JRP 01
 #define OP_SUB_ALIAS 05
-#define OP_STO 06
+#define OP_STO 03
 #define OP_HLT 07
 
 #define OPCODE_MASK  0x0000E000
