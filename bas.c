@@ -104,6 +104,8 @@ struct mnemonic baby[] = {
   { "SKN", M_INSTR, .ins=&I_SKN },
   { "STO", M_INSTR, .ins=&I_STO },
   { "HLT", M_INSTR, .ins=&I_HLT },
+  { "CMP", M_INSTR, .ins=&I_SKN },
+  { "STP", M_INSTR, .ins=&I_HLT },
   { "NUM", M_DIRECTIVE, .dir=D_NUM },
   { "EJA", M_DIRECTIVE, .dir=D_EJA },
 };
@@ -346,20 +348,29 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
       size_t toklen = strlen(tok);
 
       if (state == LEX_START) {
-        if (tok[toklen - 1] == ':') {
-          tok[toklen -1] = '\0';
-          abstract.org = strtoul(tok, &end, 10);
+        addr_t a = strtoul(tok, &end, 10);
+        if (end[0] == '\0' ||
+            (end[0] == ':' &&
+             end[1] == '\0')) {
+          *end = '\0';
+          abstract.org = a;
+          abstract.flags |= HAS_ORG;
+        } else if (tok[toklen - 1] == ':') {
           if (end == tok) {
             abstract.flags |= HAS_LABEL;
             abstract.label = strdup(tok);
           } else {
-            abstract.flags |= HAS_ORG;
+            fprintf(stderr, "%s:%d: label cannot begin with a digit: %s\n",
+                    source->leaf, line_num, tok);
+            rc = EHANDLED;
+            goto finish;
           }
         } else {
           state = LEX_INSTR;
         }
       }
-      if (strcmp(tok, "--") == 0) {
+      if (strncmp(tok, "--", 2) == 0 ||
+          strncmp(tok, ";", 1) == 0) {
         state = LEX_COMMENT;
       }
       if (state == LEX_INSTR) {
@@ -377,7 +388,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
         state = LEX_SURPLUS_OPERANDS;
       } else if (state == LEX_SURPLUS_OPERANDS) {
         fprintf(stderr, "surplus operand: %s\n", tok);
-        rc = E2BIG;
+        rc = EHANDLED;
         goto finish;
       }
     }
