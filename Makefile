@@ -60,5 +60,5 @@ clean:
 	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o test/*.out $(DEP)
 
 test: bas bsim
-	./bas -m -O binary -o test/test-jmp.out test/test-jmp.asm
-	timeout -s QUIT 1 ./bsim test/test-jmp.out | grep '^0000001c: 00000011 00000011 00000022'
+	./bas -m -O bits.snp -o test/test-jmp.out test/test-jmp.asm
+	timeout -s QUIT 1 ./bsim -I bits.snp test/test-jmp.out | grep '^0000001c: 00000011 00000011 00000022'
