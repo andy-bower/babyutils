@@ -4,7 +4,7 @@
 this=baby
 d=lib$(this)
 
-object=arch writer section
+object=arch writer section loader objfile memory segment
 
 INCDIRS+=$(d)
 LIBS+=$(this)

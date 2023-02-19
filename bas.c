@@ -16,6 +16,7 @@
 #include <libgen.h>
 #include <sys/types.h>
 
+#include "butils.h"
 #include "arch.h"
 #include "section.h"
 #include "writer.h"
@@ -26,8 +27,6 @@
 #define HAS_ORG   01
 #define HAS_LABEL 02
 #define HAS_INSTR 04
-
-#define EHANDLED 224
 
 enum operand_type {
   OPR_NONE,
@@ -408,7 +407,7 @@ finish:
 int usage(FILE *to, int rc, const char *prog) {
   int i;
 
-  fprintf(to, "usage: %s [OPTIONS] [SOURCE|-]...\n"
+  fprintf(to, "usage: %s [OPTIONS] SOURCE|-...\n"
     "OPTIONS\n"
     "  -a, --listing            output listing\n"
     "  -h, --help               output usage and exit\n"
@@ -498,6 +497,7 @@ int main(int argc, char *argv[]) {
 
   if (optind == argc) {
     fprintf(stderr, "No source specified\n");
+    usage(stderr, 1, argv[0]);
     rc = EHANDLED; /* ENOENT */
   }
 
