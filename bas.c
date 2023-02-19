@@ -357,6 +357,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
           abstract.flags |= HAS_ORG;
         } else if (tok[toklen - 1] == ':') {
           if (end == tok) {
+            tok[toklen - 1] = '\0';
             abstract.flags |= HAS_LABEL;
             abstract.label = strdup(tok);
           } else {
