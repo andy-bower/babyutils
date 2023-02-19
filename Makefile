@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # (c) Copyright 2023 Andrew Bower
 
-CFLAGS ?= -O2 -g -Wall -Werror
+CFLAGS ?= -O2 -g -Wall -Werror -MMD -MP
 LDFLAGS ?= -O2 -g
 prefix ?= /usr/local
 INSTALL ?= install
@@ -16,6 +16,8 @@ all: all_targets
 
 include libbaby/lib.mk
 
+INCDIRS=$(SUBDIRS)
+
 EXES=bas bsim
 CFLAGS+=$(addprefix -I,$(INCDIRS))
 LDFLAGS+=-L.
@@ -25,6 +27,10 @@ LDLIBS=$(addprefix -l,$(LIBS))
 r:=$(DESTDIR)$(prefix)
 
 all_targets: $(LIBFILES) $(EXES)
+
+DEP=*.d $(foreach d,$(SUBDIRS),$($(d)_DEP))
+
+-include $(DEP)
 
 install: all
 	mkdir -p $r/bin
@@ -46,12 +52,12 @@ uninstall:
 	$(RM) -r $r/$(DOCDIR)
 	$(RM) -r $r/$(LICENSESDIR)
 
-bas: bas.o
+bas: bas.o libbaby.a
 
-bsim: bsim.o
+bsim: bsim.o libbaby.a
 
 clean:
-	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o test/*.out
+	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o test/*.out $(DEP)
 
 test: bas bsim
 	./bas -m -O binary -o test/test-jmp.out test/test-jmp.asm

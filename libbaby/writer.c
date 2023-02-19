@@ -47,9 +47,9 @@ static int logisim_writer(FILE *stream, const struct section *section, int flags
 
 static int bits_writer(FILE *stream, const struct section *section, int flags) {
   addr_t word;
-  word_t tst;
+  uword_t tst;
   int rc;
-  bool ssem = flags & BITS_SSEM;
+  const bool ssem = flags & BITS_SSEM;
 
   for (word = 0; word < section->org + section->length; word++) {
     word_t val = word < section->org ? fill_value : section->data[word - section->org].value;
@@ -88,12 +88,12 @@ static int binary_writer(FILE *stream, const struct section *section, int flags)
 }
 
 const struct format formats[] = {
-  { WRITER_LOGISIM,      logisim_writer, 0 },
-  { WRITER_BINARY,       binary_writer,  0 },
-  { WRITER_BITS,         bits_writer,    0 },
-  { WRITER_BITS ".ssem", bits_writer,    BITS_SSEM },
-  { WRITER_BITS ".snp",  bits_writer,    BITS_SSEM | BITS_ADDR },
-  { NULL,                NULL,           0 }
+  { WRITER_LOGISIM,               logisim_writer, 0 },
+  { WRITER_BINARY,                binary_writer,  0 },
+  { WRITER_BITS,                  bits_writer,    0 },
+  { WRITER_BITS BITS_SUFFIX_SSEM, bits_writer,    BITS_SSEM },
+  { WRITER_BITS BITS_SUFFIX_SNP,  bits_writer,    BITS_SSEM | BITS_ADDR },
+  { NULL,                         NULL,           0 }
 };
 
 int write_section(const char *path, const struct section *section, const struct format *format) {

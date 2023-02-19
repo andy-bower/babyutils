@@ -1,5 +1,6 @@
 .gitignore
 *.o
+*.d
 *.a
 /bas
 /bsim

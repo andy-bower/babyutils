@@ -10,6 +10,7 @@
 
 typedef uint32_t addr_t;
 typedef int32_t word_t;
+typedef uint32_t uword_t;
 typedef uint32_t num_t;
 
 struct instr {

@@ -4,11 +4,13 @@
 this=baby
 d=lib$(this)
 
-object=arch writer section loader objfile memory segment
+$(d)_SRC=arch.c writer.c section.c loader.c objfile.c memory.c segment.c
+$(d)_OBJ=$($(d)_SRC:.c=.o)
+$(d)_DEP=$($(d)_SRC:.c=.d)
 
-INCDIRS+=$(d)
+SUBDIRS+=$(d)
 LIBS+=$(this)
 
-$(d).a: $(addprefix $d/,$(addsuffix .o,$(object)))
+$(d).a: $(addprefix $d/,$($(d)_OBJ))
 	$(AR) r $@ $^
 

@@ -38,14 +38,20 @@ Use
 .Ar FMT
 as object file format.
 (Default
-.Ql binary . )
+.Ql bits.snp . )
 .It Fl v, -verbose
 Output verbose information
 .El
 .Ss Input Formats
-.Bl -tag -width logisimx
+.Bl -tag -width bits.ssemx
 .It Ic binary
 Binary in host endianness (default)
+.It Ic bits
+Bit strings
+.It Ic bits.ssem
+Bit strings with LSB first
+.It Ic bits.snp
+SSEM Snapshot format (default)
 .El
 .Sh BUGS
 Please raise bug reports at:

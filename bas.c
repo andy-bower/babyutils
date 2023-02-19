@@ -20,9 +20,10 @@
 #include "arch.h"
 #include "section.h"
 #include "writer.h"
+#include "binfmt.h"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
-#define DEFAULT_OUTPUT_FORMAT WRITER_BINARY
+#define DEFAULT_OUTPUT_FORMAT WRITER_BITS BITS_SUFFIX_SNP
 
 #define HAS_ORG   01
 #define HAS_LABEL 02

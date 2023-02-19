@@ -4,9 +4,11 @@
 #ifndef LIBBABY_WRITER_H
 #define LIBBABY_WRITER_H
 
+#include "binfmt.h"
+
 #define WRITER_LOGISIM "logisim"
-#define WRITER_BINARY "binary"
-#define WRITER_BITS "bits"
+#define WRITER_BINARY BINFMT_BINARY
+#define WRITER_BITS BINFMT_BITS
 
 struct format {
   const char *name;

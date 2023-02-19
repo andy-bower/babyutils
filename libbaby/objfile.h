@@ -11,4 +11,7 @@ struct object_file {
   FILE *stream;
 };
 
+extern int objfile_open_stream(struct object_file *file);
+extern void objfile_close(struct object_file *file);
+
 #endif

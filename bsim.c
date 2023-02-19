@@ -25,7 +25,7 @@
 
 #define DEFAULT_MEMORY_SIZE 32
 #define DEFAULT_OUTPUT_FILE "b.out"
-#define DEFAULT_INPUT_FORMAT READER_BINARY
+#define DEFAULT_INPUT_FORMAT READER_BITS BITS_SUFFIX_SNP
 
 struct instruction {
   const char *debug_name;
@@ -201,6 +201,9 @@ int main(int argc, char *argv[]) {
     { NULL }
   };
 
+  if (loaders_init() != 0)
+    return 1;
+
   do {
     c = getopt_long(argc, argv, "hvm:I:", options, &option_index);
     switch (c) {
@@ -243,7 +246,7 @@ int main(int argc, char *argv[]) {
     return usage(stderr, 1, argv[0]);
   exe.path = argv[optind++];
 
-  rc = loader->stat(&exe, &segment);
+  rc = loader->stat(loader, &exe, &segment);
   if (rc != 0)
     return rc;
 
@@ -268,7 +271,7 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "Mapped fully aliased page of %d words of RAM\n",
           page0.size);
 
-  rc = loader->load(&exe, &segment, &mc.vm);
+  rc = loader->load(loader, &exe, &segment, &mc.vm);
   if (rc != 0)
     goto finish;
 
@@ -305,7 +308,9 @@ finish:
     free(page0.data);
 
   if (loader != NULL)
-    loader->close(&exe);
+    loader->close(loader, &exe);
+
+  loaders_finit();
 
   return rc == 0 ? 0 : 1;
 }
