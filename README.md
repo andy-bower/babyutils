@@ -16,10 +16,10 @@ OPTIONS
   -h, --help               output usage and exit
   -m, --map                output map
   -o, --output FILE|-      write object to FILE, default: b.out
-  -O, --output-format FMT  use FMT output format, default: logisim
+  -O, --output-format FMT  use FMT output format, default: binary
   -v, --verbose            output verbose information
 
-./bas: supported output formats: logisim binary
+./bas: supported output formats: logisim binary bits bits.ssem bits.snp
 ```
 
 ## Example

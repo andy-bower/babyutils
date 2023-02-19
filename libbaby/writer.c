@@ -21,6 +21,7 @@
 #include "writer.h"
 
 #define BITS_SSEM 1
+#define BITS_ADDR 2
 
 static bool verbose = false;
 
@@ -52,6 +53,8 @@ static int bits_writer(FILE *stream, const struct section *section, int flags) {
 
   for (word = 0; word < section->org + section->length; word++) {
     word_t val = word < section->org ? fill_value : section->data[word - section->org].value;
+    if (flags & BITS_ADDR)
+      fprintf(stream, "%04d: ", word);
     for (tst = ssem ? 1 : 0x80000000UL; tst != 0; tst = ssem ? tst << 1 : tst >> 1)
       if ((rc = fputc(val & tst ? '1' : '0', stream)) == EOF)
         return errno;
@@ -89,6 +92,7 @@ const struct format formats[] = {
   { WRITER_BINARY,       binary_writer,  0 },
   { WRITER_BITS,         bits_writer,    0 },
   { WRITER_BITS ".ssem", bits_writer,    BITS_SSEM },
+  { WRITER_BITS ".snp",  bits_writer,    BITS_SSEM | BITS_ADDR },
   { NULL,                NULL,           0 }
 };
 
