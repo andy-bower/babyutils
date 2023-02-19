@@ -4,9 +4,11 @@
 this=baby
 d=lib$(this)
 
+object=arch writer section
+
 INCDIRS+=$(d)
 LIBS+=$(this)
 
-$(d).a: $(d)/arch.o
-	$(AR) r $@ $<
+$(d).a: $(addprefix $d/,$(addsuffix .o,$(object)))
+	$(AR) r $@ $^
 

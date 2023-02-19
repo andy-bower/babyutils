@@ -28,9 +28,6 @@
 
 #define EHANDLED 224
 
-typedef uint32_t addr_t;
-typedef int32_t word_t;
-
 struct segment {
   addr_t load_address;
   addr_t exec_address;

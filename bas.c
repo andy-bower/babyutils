@@ -17,12 +17,8 @@
 #include <sys/types.h>
 
 #include "arch.h"
-
-#define WRITER_LOGISIM "logisim"
-#define WRITER_BINARY "binary"
-#define WRITER_BITS "bits"
-
-#define BITS_SSEM 1
+#include "section.h"
+#include "writer.h"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_BINARY
@@ -32,12 +28,6 @@
 #define HAS_INSTR 04
 
 #define EHANDLED 224
-
-typedef uint32_t addr_t;
-typedef uint32_t word_t;
-typedef uint32_t num_t;
-
-static const word_t fill_value = 0x0;
 
 enum operand_type {
   OPR_NONE,
@@ -67,19 +57,6 @@ struct abstract {
   num_t opr_num;
   struct source *source;
   int line;
-};
-
-struct sectiondata {
-  word_t value;
-  struct abstract *debug;
-};
-
-struct section {
-  addr_t capacity;
-  addr_t length;
-  addr_t org;
-  addr_t cursor;
-  struct sectiondata *data;
 };
 
 enum mnem_type {
@@ -117,12 +94,6 @@ enum lex {
   LEX_OPERAND,
   LEX_SURPLUS_OPERANDS,
   LEX_COMMENT,
-};
-
-struct format {
-  const char *name;
-  int (*writer)(FILE *stream, const struct section *section, int flags);
-  const int flags;
 };
 
 struct mnemonic baby[] = {
@@ -171,33 +142,6 @@ void free_abs(struct abstract *abstract) {
     free(abstract->instr);
   if (abstract->opr_str)
     free(abstract->opr_str);
-}
-
-static int put_word(struct section *section, word_t word, struct abstract *abs) {
-  if (section->cursor < section->org) {
-    fprintf(stderr, "cannot write to 0x%x before section start 0x%x\n",
-            section->cursor, section->org);
-    return ESPIPE;
-  }
-  if (section->cursor >= section->org + section->capacity) {
-    size_t old_capacity = section->capacity;
-    section->capacity = section->cursor - section->org + 0x400;
-    section->data = realloc(section->data, sizeof(*section->data) * section->capacity);
-    if (section->data == NULL) {
-      fprintf(stderr, "error expanding section to %ud words\n", section->capacity);
-      return errno;
-    }
-   memset(section->data + old_capacity, '\0', (section->capacity - old_capacity) * sizeof(*section->data));
-  }
-  if (section->data[section->cursor - section->org].debug != NULL) {
-    fprintf(stderr, "section already includes data at 0x%08x\n", section->cursor);
-    return EEXIST;
-  }
-  section->data[section->cursor   - section->org].debug = abs;
-  section->data[section->cursor++ - section->org].value = word;
-  if (section->cursor - section->org > section->length)
-    section->length = section->cursor - section->org;
-  return 0;
 }
 
 int assemble_one(struct section *section,
@@ -334,8 +278,6 @@ long seek_to_line(struct source *source, int line) {
   }
 }
 
-/* TODO: make name tables available to lexer, or rather have
- * have a big name hash table */
 ssize_t lex(struct abstract **abs_ret, struct source *source) {
   struct abstract *buf = NULL;
   char srcline[1024];
@@ -452,102 +394,6 @@ finish:
   return rc == 0 ? bufptr : -rc;
 }
 
-static int logisim_writer(FILE *stream, const struct section *section, int flags) {
-  addr_t word;
-  int rc;
-
-  fprintf(stream, "v2.0 raw\n");
-  for (word = 0; word < section->org + section->length; word++) {
-    rc = fprintf(stream, "%08x\n", word < section->org ? fill_value : section->data[word - section->org].value);
-    if (rc < 0)
-      return errno;
-  }
-
-  if (verbose) {
-    fprintf(stderr, "  words in output = 0x%x\n", word);
-  }
-
-  return 0;
-}
-
-static int bits_writer(FILE *stream, const struct section *section, int flags) {
-  addr_t word;
-  word_t tst;
-  int rc;
-  bool ssem = flags & BITS_SSEM;
-
-  for (word = 0; word < section->org + section->length; word++) {
-    word_t val = word < section->org ? fill_value : section->data[word - section->org].value;
-    for (tst = ssem ? 1 : 0x80000000UL; tst != 0; tst = ssem ? tst << 1 : tst >> 1)
-      if ((rc = fputc(val & tst ? '1' : '0', stream)) == EOF)
-        return errno;
-    rc = fputc('\n', stream);
-    if (rc == EOF)
-      return errno;
-  }
-
-  if (verbose) {
-    fprintf(stderr, "  words in output = 0x%x\n", word);
-  }
-
-  return 0;
-}
-
-static int binary_writer(FILE *stream, const struct section *section, int flags) {
-  addr_t word;
-  int rc;
-
-  for (word = 0; word < section->org + section->length; word++) {
-    rc = fwrite(&section->data[word - section->org].value, sizeof(word_t), 1, stream);
-    if (rc < 1)
-      return errno;
-  }
-
-  if (verbose) {
-    fprintf(stderr, "  words in output = 0x%x\n", word);
-  }
-
-  return 0;
-}
-
-const static struct format formats[] = {
-  { WRITER_LOGISIM,      logisim_writer, 0 },
-  { WRITER_BINARY,       binary_writer,  0 },
-  { WRITER_BITS,         bits_writer,    0 },
-  { WRITER_BITS ".ssem", bits_writer,    BITS_SSEM },
-};
-#define formatsz (sizeof formats / sizeof *formats)
-
-static int write_section(const char *path, const struct section *section, const struct format *format) {
-  FILE *file;
-  int rc;
-
-  if (strcmp(path, "-")) {
-    file = fopen(path, "w");
-    if (file == NULL) {
-      perror("fopen");
-      return 1;
-    }
-  } else {
-    file = stdout;
-  }
-
-  if (verbose)
-    fprintf(stderr, "Writing section\n  org = 0x%x\n  length = 0x%x\n",
-            section->org, section->length);
-
-  rc = format->writer(file, section, format->flags);
-
-  if (verbose) {
-    fprintf(stderr, "Written %s\n", path);
-  }
-
-  if (file != stdout)
-    fclose(file);
-
-  return rc;
-}
-
 int usage(FILE *to, int rc, const char *prog) {
   int i;
 
@@ -564,7 +410,7 @@ int usage(FILE *to, int rc, const char *prog) {
     prog, DEFAULT_OUTPUT_FILE, DEFAULT_OUTPUT_FORMAT,
     prog);
 
-  for (i = 0; i < formatsz; i++)
+  for (i = 0; formats[i].name != NULL; i++)
     fprintf(to, " %s", formats[i].name);
 
   fprintf(to, "\n");
@@ -628,11 +474,11 @@ int main(int argc, char *argv[]) {
   if (c != -1)
     return usage(stderr, 1, argv[0]);
 
-  for (i = 0; i < formatsz; i++) {
+  for (i = 0; formats[i].name != NULL; i++) {
     if (!strcmp(output_format, formats[i].name))
       break;
   }
-  if (i == formatsz) {
+  if (formats[i].name == NULL) {
     fprintf(stderr, "No such output format: %s\n", output_format);
     rc = EHANDLED; /* EINVAL */
   } else {
