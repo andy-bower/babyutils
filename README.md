@@ -2,7 +2,7 @@
 
 This is an assembler and simulator for the Manchester Baby.
 
-The purpose of this suite is to provide a binutils-style offering for systems software programmers used to decent command line tools, so that writing an assembly program is almost as easy and as natural as it is to seasoned assembly language programmers for modern architectures.
+The purpose of this suite is to provide a binutils-style offering to make it quick and easy to write assembly language programs in a modern manner.
 
 Third party applications already offer nice user interfaces for simulation of the Manchester Baby so an important requirement of this toolchain is to be able to interoperate with such applications by supporting suitable object file formats, such as the `.snp` snapshot format.
 
