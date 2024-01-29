@@ -133,6 +133,10 @@ int usage(FILE *to, int rc, const char *prog) {
     "  -I, --input-format FMT   use FMT output format, default: %s\n"
     "  -v, --verbose            output verbose information\n"
     "\n"
+    "SIGNALS\n"
+    "  SIGINT  (Ctrl-C)         print registers and continue\n"
+    "  SIGQUIT (Ctrl-\\)         stop after current instruction\n"
+    "\n"
     "%s: supported input formats:",
     prog, DEFAULT_MEMORY_SIZE, DEFAULT_INPUT_FORMAT,
     prog);
