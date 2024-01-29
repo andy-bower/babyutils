@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* (c) Copyright 2023 Andrew Bower */
+/* (c) Copyright 2023-2024 Andrew Bower */
 
 /* Simulator for Manchester Baby. */
 
@@ -15,6 +15,7 @@
 #include <libgen.h>
 #include <assert.h>
 #include <signal.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -59,7 +60,7 @@ struct mc {
 int verbose;
 
 static void dump_state(const struct mc *mc) {
-  printf("cycles %12lu ac %08x ci %08x pi %08x%s\n",
+  printf("cycles %12" PRIu64 " ac %08x ci %08x pi %08x%s\n",
          mc->cycles, mc->regs.ac, mc->regs.ci, mc->regs.pi,
          mc->stopped ? " STOP" : "");
 }
