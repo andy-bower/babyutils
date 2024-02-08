@@ -4,7 +4,7 @@
 this=baby
 d=lib$(this)
 
-$(d)_SRC=arch.c writer.c section.c loader.c objfile.c memory.c segment.c
+$(d)_SRC=arch.c asm.c writer.c section.c loader.c objfile.c memory.c segment.c
 $(d)_OBJ=$($(d)_SRC:.c=.o)
 $(d)_DEP=$($(d)_SRC:.c=.d)
 

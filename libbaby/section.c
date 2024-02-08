@@ -10,7 +10,7 @@
 
 #include "section.h"
 
-int put_word(struct section *section, word_t word, struct abstract *abs) {
+int put_word(struct section *section, word_t word, struct asm_abstract *abs) {
   if (section->cursor < section->org) {
     fprintf(stderr, "cannot write to 0x%x before section start 0x%x\n",
             section->cursor, section->org);

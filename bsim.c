@@ -66,8 +66,7 @@ static void dump_state(const struct mc *mc) {
 }
 
 static void sim_cycle(struct mc *mc) {
-  word_t opcode;
-  word_t operand;
+  struct arch_decoded d;
   word_t data = 0;    // Appease compiler
 
   if (verbose)
@@ -77,24 +76,23 @@ static void sim_cycle(struct mc *mc) {
   mc->regs.pi = read_word(&mc->vm, ++mc->regs.ci);
 
   /* t2: Decode */
-  opcode = (mc->regs.pi & OPCODE_MASK) >> OPCODE_POS;
-	operand = (mc->regs.pi & OPERAND_MASK) >> OPERAND_POS;
+  d = arch_decode(mc->regs.pi);
 
   /* t3: Execute - data access */
-  switch (opcode) {
+  switch (d.opcode) {
   case OP_LDN:
   case OP_SUB:
   case OP_JMP:
   case OP_JRP:
-    data = read_word(&mc->vm, operand);
+    data = read_word(&mc->vm, d.operand);
     break;
   case OP_STO:
-    write_word(&mc->vm, operand, mc->regs.ac);
+    write_word(&mc->vm, d.operand, mc->regs.ac);
     break;
   }
 
   /* t4: Execute */
-  switch (opcode) {
+  switch (d.opcode) {
   case OP_LDN:
     mc->regs.ac = -data;
     break;
@@ -107,7 +105,7 @@ static void sim_cycle(struct mc *mc) {
   }
 
   /* t5: Next-PC */
-  switch (opcode) {
+  switch (d.opcode) {
   case OP_SKN:
     if (mc->regs.ac < 0)
       mc->regs.ci++;

@@ -21,61 +21,19 @@
 #include "section.h"
 #include "writer.h"
 #include "binfmt.h"
+#include "asm.h"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_BITS BITS_SUFFIX_SNP
 
-#define HAS_ORG   01
-#define HAS_LABEL 02
-#define HAS_INSTR 04
-
-enum operand_type {
-  OPR_NONE,
-  OPR_NUM,
-  OPR_SYM,
-};
-
 struct source {
-  char *path;
-  char *leaf;
+  struct source_public public;
   FILE *stream;
   bool seekable;
   bool noclose;
   int lines;
   long *index;
   size_t indexsz;
-};
-
-struct abstract {
-  int flags;
-  int n_operands;
-  addr_t org;
-  char *label;
-  char *instr;
-  enum operand_type opr_type;
-  char *opr_str;
-  num_t opr_num;
-  struct source *source;
-  int line;
-};
-
-enum mnem_type {
-  M_INSTR,
-  M_DIRECTIVE,
-};
-
-enum directive {
-  D_NUM,
-  D_EJA,
-};
-
-struct mnemonic {
-  char *name;
-  enum mnem_type type;
-  union {
-    const struct instr *ins;
-    enum directive dir;
-  };
 };
 
 enum sym_type {
@@ -96,32 +54,7 @@ enum lex {
   LEX_COMMENT,
 };
 
-struct mnemonic baby[] = {
-  { "JMP", M_INSTR, .ins=&I_JMP },
-  { "JRP", M_INSTR, .ins=&I_JRP },
-  { "SUB", M_INSTR, .ins=&I_SUB },
-  { "LDN", M_INSTR, .ins=&I_LDN },
-  { "SKN", M_INSTR, .ins=&I_SKN },
-  { "STO", M_INSTR, .ins=&I_STO },
-  { "HLT", M_INSTR, .ins=&I_HLT },
-  { "CMP", M_INSTR, .ins=&I_SKN },
-  { "STP", M_INSTR, .ins=&I_HLT },
-  { "NUM", M_DIRECTIVE, .dir=D_NUM },
-  { "EJA", M_DIRECTIVE, .dir=D_EJA },
-};
-#define babysz (sizeof baby / sizeof *baby)
-
 int verbose;
-
-static int instrsort(const void *a, const void *b) {
-  const struct mnemonic *ma = (const struct mnemonic *) a;
-  const struct mnemonic *mb = (const struct mnemonic *) b;
-  return strcasecmp(ma->name, mb->name);
-}
-
-static int instrsearch(const void *key, const void *a) {
-  return instrsort(&key, a);
-}
 
 static int symsort(const void *a, const void *b) {
   const struct symbol *sa = (const struct symbol *) a;
@@ -134,10 +67,10 @@ static int symsearch(const void *key, const void *a) {
 }
 
 static void init(void) {
-  qsort(baby, babysz, sizeof *baby, instrsort);
+  arch_init();
 }
 
-void free_abs(struct abstract *abstract) {
+void free_abs(struct asm_abstract *abstract) {
   if (abstract->label)
     free(abstract->label);
   if (abstract->instr)
@@ -148,8 +81,7 @@ void free_abs(struct abstract *abstract) {
 
 int assemble_one(struct section *section,
                  struct symbol *symbols, size_t symbol_count,
-                 struct abstract *abstract, bool first_pass) {
-  num_t operand;
+                 struct asm_abstract *abstract, bool first_pass) {
   int rc = 0;
 
   if (!first_pass && abstract->opr_type == OPR_SYM) {
@@ -159,24 +91,12 @@ int assemble_one(struct section *section,
       fprintf(stderr, "error: symbol '%s' not found\n", abstract->opr_str);
       return ENOENT;
     }
-    operand = sym->value;
+    abstract->opr_effective = sym->value;
   } else {
-    operand = abstract->opr_num;
+    abstract->opr_effective = abstract->opr_num;
   }
 
-  if (verbose && !first_pass)
-    fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %-10s %s:%d\n",
-            abstract->flags & HAS_ORG ? "ORG" : "",
-            abstract->flags & HAS_LABEL ? "LABEL" : "",
-            abstract->flags & HAS_INSTR ? "INSTR" : "",
-            abstract->n_operands,
-            abstract->org,
-            abstract->flags & HAS_LABEL ? abstract->label : "",
-            abstract->flags & HAS_INSTR ? abstract->instr : "",
-            operand,
-            abstract->opr_type == OPR_SYM ? abstract->opr_str : "",
-            abstract->source->leaf,
-            abstract->line);
+  asm_log_abstract(abstract);
 
   if (abstract->flags & HAS_ORG) {
     section->cursor = abstract->org;
@@ -187,8 +107,7 @@ int assemble_one(struct section *section,
   }
 
   if (!first_pass && abstract->flags & HAS_INSTR) {
-    const struct mnemonic *m;
-    m = bsearch(abstract->instr, baby, babysz, sizeof *baby, instrsearch);
+    const struct mnemonic *m = arch_find_instr(abstract->instr);
     if (m == NULL) {
       fprintf(stderr, "no such mnemonic %s\n", abstract->instr);
       return EINVAL;
@@ -197,15 +116,15 @@ int assemble_one(struct section *section,
     if (m->type == M_INSTR) {
       word_t word = (m->ins->opcode << OPCODE_POS) & OPCODE_MASK;
       if (m->ins->operands == 1)
-        word |= (operand << OPERAND_POS) & OPERAND_MASK;
+        word |= (abstract->opr_effective << OPERAND_POS) & OPERAND_MASK;
       put_word(section, word, abstract);
     } else if (m->type == M_DIRECTIVE) {
       switch (m->dir) {
       case D_NUM:
-        rc = put_word(section, operand, abstract);
+        rc = put_word(section, abstract->opr_effective, abstract);
         break;
       case D_EJA:
-        rc = put_word(section, operand - 1, abstract);
+        rc = put_word(section, abstract->opr_effective - 1, abstract);
       }
     }
   }
@@ -218,7 +137,7 @@ int assemble_one(struct section *section,
   return rc;
 }
 
-int pass_one(struct section *section, struct symbol **symbols, struct abstract *abstract, size_t length) {
+int pass_one(struct section *section, struct symbol **symbols, struct asm_abstract *abstract, size_t length) {
   struct symbol *syms = NULL;
   size_t symsz = 0;
   off_t symptr = 0;
@@ -249,7 +168,7 @@ int pass_one(struct section *section, struct symbol **symbols, struct abstract *
 int assemble(struct section *section,
              struct symbol *symbols,
              size_t symbol_count,
-             struct abstract *abstract,
+             struct asm_abstract *abstract,
              size_t abstract_count) {
   int rc = 0;
   int i;
@@ -275,13 +194,13 @@ long seek_to_line(struct source *source, int line) {
     fseek(source->stream, offset, SEEK_SET);
     return offset;
   } else {
-    fprintf(stderr, "line out of range: %s:%d\n", source->path, line);
+    fprintf(stderr, "line out of range: %s:%d\n", source->public.path, line);
     return -ERANGE;
   }
 }
 
-ssize_t lex(struct abstract **abs_ret, struct source *source) {
-  struct abstract *buf = NULL;
+ssize_t lex(struct asm_abstract **abs_ret, struct source *source) {
+  struct asm_abstract *buf = NULL;
   char srcline[1024];
   size_t bufsz = 0;
   off_t bufptr = 0;
@@ -291,14 +210,14 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
   srcline[sizeof srcline - 1] = EOF;
 
   if (source->stream == NULL) {
-    if (!strcmp(source->path, "-")) {
-      free(source->leaf);
-      source->leaf = strdup("stdin");
+    if (!strcmp(source->public.path, "-")) {
+      free(source->public.leaf);
+      source->public.leaf = strdup("stdin");
       source->stream = stdin;
       source->seekable = false;
       source->noclose = true;
     } else {
-      source->stream = fopen(source->path, "r");
+      source->stream = fopen(source->public.path, "r");
       source->seekable = true;
       source->noclose = false;
       if (source->stream == NULL) {
@@ -322,7 +241,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
 
   for (line_num = 1;rc == 0 && !feof(source->stream); line_num++) {
     char *tok, *end, *saveptr, *line;
-    struct abstract abstract = { .source = source, .line = line_num };
+    struct asm_abstract abstract = { .source = &source->public, .line = line_num };
     enum lex state = LEX_START;
 
     if (source->seekable) {
@@ -339,7 +258,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
       goto finish;
     }
     if (!feof(source->stream) && !strchr(srcline, '\n')) {
-      fprintf(stderr, "%s:%d: line too long\n", source->leaf, line_num);
+      fprintf(stderr, "%s:%d: line too long\n", source->public.leaf, line_num);
       rc = EHANDLED;
       goto finish;
     }
@@ -362,7 +281,7 @@ ssize_t lex(struct abstract **abs_ret, struct source *source) {
             abstract.label = strdup(tok);
           } else {
             fprintf(stderr, "%s:%d: label cannot begin with a digit: %s\n",
-                    source->leaf, line_num, tok);
+                    source->public.leaf, line_num, tok);
             rc = EHANDLED;
             goto finish;
           }
@@ -439,7 +358,7 @@ int main(int argc, char *argv[]) {
   int num_sources;
   int option_index;
   struct section section = { 0 };
-  struct abstract *abstract = NULL;
+  struct asm_abstract *abstract = NULL;
   size_t abstract_count;
   struct source *sources = NULL;
   struct symbol *symbols = NULL;
@@ -509,9 +428,9 @@ int main(int argc, char *argv[]) {
     struct source *source = sources + i;
     char *str;
 
-    source->path = strdup(argv[optind]);
-    str = strdup(source->path);
-    source->leaf = strdup(basename(str));
+    source->public.path = strdup(argv[optind]);
+    str = strdup(source->public.path);
+    source->public.leaf = strdup(basename(str));
     free(str);
 
     rc = lex(&abstract, source);
@@ -543,19 +462,20 @@ int main(int argc, char *argv[]) {
 
     for (a = section.org; a < section.org + section.length; a++) {
       struct sectiondata *sd = section.data + (a - section.org);
+      struct source *src = sd->debug ? (struct source *) sd->debug->source : NULL;
       char *str;
       size_t len = -1;
 
-      if (sd->debug && seek_to_line(sd->debug->source, sd->debug->line) >= 0) {
-        str = fgets(srcline, sizeof srcline, sd->debug->source->stream);
+      if (sd->debug && seek_to_line(src, sd->debug->line) >= 0) {
+        str = fgets(srcline, sizeof srcline, src->stream);
         len = strlen(str);
         if (str[len - 1] == '\n')
           str[len - 1] = '\0';
       }
       printf("  %08x: %08x %10.10s:%-5d %-60.60s\n",
              a, sd->value,
-             sd->debug && sd->debug->source ? sd->debug->source->leaf : "",
-             sd->debug && sd->debug->source ? sd->debug->line : 0,
+             src ? src->public.leaf : "",
+             src ? sd->debug->line : 0,
              len != -1 ? str : "");
     }
   }
@@ -578,8 +498,8 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < num_sources; i++) {
       struct source *source = sources + i;
       if (source->stream != NULL) {
-        free(source->path);
-        free(source->leaf);
+        free(source->public.path);
+        free(source->public.leaf);
         if (!source->noclose)
           fclose(source->stream);
       }

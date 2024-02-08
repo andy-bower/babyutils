@@ -1,4 +1,4 @@
-# Baby assembler and simulator
+# Baby assembler, simulator and disassembler
 
 This is an assembler and simulator for the Manchester Baby.
 
@@ -17,7 +17,7 @@ Third party applications already offer nice user interfaces for simulation of th
 - [ ] Multiple sections
 - [ ] ELF file support
 - [ ] Symbol export
-- [ ] Disassembler ('bdump')
+- [x] Disassembler ('bdump')
 - [ ] Object file conversion tool ('bcopy')
 - [ ] Assembler macros
 - [ ] Assembler expressions
@@ -62,6 +62,17 @@ OPTIONS
 ./bsim: supported input formats: binary bits bits.ssem bits.snp
 ```
 
+### Disassmebler Options
+```
+usage: ./bdump [OPTIONS] OBJECT
+OPTIONS
+  -h, --help               output usage and exit
+  -I, --input-format FMT   use FMT output format, default: bits.snp
+  -v, --verbose            output verbose information
+
+./bdump: supported input formats: binary bits bits.ssem bits.snp
+```
+
 ### Example
 
 See the assembly source files in the `test` directory for examples of accepted syntax.
@@ -69,10 +80,11 @@ See the assembly source files in the `test` directory for examples of accepted s
 ```
 ./bas -a test/test-jmp.asm
 ./bsim b.out
+./bdump b.out
 ```
 
 ## Author
 
-(c) Copyright 2023 Andrew Bower
+(c) Copyright 2023-2024 Andrew Bower
 
 SPDX-License-Identifier: MIT

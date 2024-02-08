@@ -8,11 +8,11 @@
 
 #include "arch.h"
 
-struct abstract;
+struct asm_abstract;
 
 struct sectiondata {
   word_t value;
-  struct abstract *debug;
+  struct asm_abstract *debug;
 };
 
 struct section {
@@ -23,6 +23,6 @@ struct section {
   struct sectiondata *data;
 };
 
-extern int put_word(struct section *section, word_t word, struct abstract *abs);
+extern int put_word(struct section *section, word_t word, struct asm_abstract *abs);
 
 #endif

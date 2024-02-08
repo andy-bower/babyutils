@@ -18,7 +18,7 @@ include libbaby/lib.mk
 
 INCDIRS=$(SUBDIRS)
 
-EXES=bas bsim
+EXES=bas bsim bdump
 CFLAGS+=$(addprefix -I,$(INCDIRS))
 LDFLAGS+=-L.
 LIBFILES=$(foreach lib,$(LIBS),lib$(lib).a)
@@ -56,8 +56,10 @@ bas: bas.o libbaby.a
 
 bsim: bsim.o libbaby.a
 
+bdump: bdump.o libbaby.a
+
 clean:
-	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o libbaby/*.o test/*.out $(DEP)
+	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o bdump.o libbaby/*.o test/*.out $(DEP)
 
 test: bas bsim
 	./bas -m -O bits.snp -o test/test-jmp.out test/test-jmp.asm
