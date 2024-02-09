@@ -27,7 +27,8 @@ inline word_t read_word(struct vm *vm, addr_t addr) {
   struct page *page = vm->page0.phys;
 
   /* Alias all of virtual memory to sole mapped page */
-  return page->data[addr & (page->size - 1)];
+//  return page->data[addr & (page->size - 1)];
+  return page->data[addr % page->size];
 }
 
 inline void write_word(struct vm *vm, addr_t addr, word_t value) {

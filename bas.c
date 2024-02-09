@@ -96,7 +96,8 @@ int assemble_one(struct section *section,
     abstract->opr_effective = abstract->opr_num;
   }
 
-  asm_log_abstract(abstract);
+  if (verbose)
+    asm_log_abstract(abstract);
 
   if (abstract->flags & HAS_ORG) {
     section->cursor = abstract->org;

@@ -181,7 +181,7 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       printf("%s:\n", a->label);
 
     if (a->flags & HAS_ORG)
-      printf("%02x:\n", addr);
+      printf("%02d:\n", addr);
 
     if (a->flags & HAS_INSTR) {
       render_instr(buf1, max, &ptr, a);
@@ -272,8 +272,6 @@ int main(int argc, char *argv[]) {
   vmem.page0.base = 0;
   vmem.page0.size = mapped_section.size;
   vmem.page0.phys = &mapped_section;
-
-  memory_checks(&vmem);
 
   rc = loader->load(loader, &exe, &segment, &vmem);
   if (rc != 0)

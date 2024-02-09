@@ -62,7 +62,7 @@ OPTIONS
 ./bsim: supported input formats: binary bits bits.ssem bits.snp
 ```
 
-### Disassmebler Options
+### Disassembler Options
 ```
 usage: ./bdump [OPTIONS] OBJECT
 OPTIONS

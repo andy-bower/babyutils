@@ -38,7 +38,7 @@ void memory_checks(struct vm *vm) {
   /* Make sure page size is non-zero */
   assert(mapped_page->size != 0);
 
-  /* Make sure phsyical page size is non-zero */
+  /* Make sure physical page size is non-zero */
   assert(mapped_page->phys->size != 0);
 
   /* Make sure page size is a power of two */
