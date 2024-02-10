@@ -1,10 +1,12 @@
 # Baby assembler, simulator and disassembler
 
-This is an assembler and simulator for the Manchester Baby.
+This is a binutils-style command line tool chain for the Manchester Baby.
 
-The purpose of this suite is to provide a binutils-style offering to make it quick and easy to write assembly language programs in a modern manner.
+These tools were written to support chapter 7 of [Computer Architecture](https://nostarch.com/computerarchitecture) and as such can export files to import into Logisim RAM blocks.
 
-Third party applications already offer nice user interfaces for simulation of the Manchester Baby so an important requirement of this toolchain is to be able to interoperate with such applications by supporting suitable object file formats, such as the `.snp` snapshot format.
+The _babyutils_ assembler `bas` offers some of the features expected of a conventional command line tool, such as labels, allowing development to scale to larger programs when implementations include a larger number of store lines.
+
+Users are encouraged to pair these tools with interesting simulators sporting fancy user interfaces out in the wild. Please raise an issue or submit a pull request if you find a simulator that requires an input format not supported by these tools or an assembly dialect with which `bas` is not yet compatible!
 
 ## Unique features
 
@@ -14,16 +16,16 @@ Third party applications already offer nice user interfaces for simulation of th
 
 ## Roadmap
 
-- [ ] Multiple sections
-- [ ] ELF file support
-- [ ] Symbol export
 - [x] Disassembler ('bdump')
 - [ ] Object file conversion tool ('bcopy')
 - [ ] Assembler macros
 - [ ] Assembler expressions
 - [ ] Saving and resuming from saved machine state in simulator
 - [ ] Simulator trace
-
+- [ ] Multiple sections
+- [ ] ELF file support
+- [ ] Symbol export
+-
 ## Using the utilities
 
 To build and install the tools to `/usr/local`:
