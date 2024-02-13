@@ -88,6 +88,7 @@ static inline struct arch_decoded arch_decode(word_t instr)
 }
 
 extern void arch_init(void);
+extern void arch_finit(void);
 extern const struct mnemonic *arch_find_instr(const char *mnemonic);
 extern int arch_find_opcode(word_t opcode, struct mnemonic **results, size_t max_results);
 #endif

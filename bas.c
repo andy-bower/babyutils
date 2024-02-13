@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* (c) Copyright 2023 Andrew Bower */
+/* (c) Copyright 2023-2024 Andrew Bower */
 
 /* Assembler for Manchester Baby. */
 
+#include <assert.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,10 +22,15 @@
 #include "section.h"
 #include "writer.h"
 #include "binfmt.h"
+#include "symbols.h"
 #include "asm.h"
+#include "asm-ast.h"
+#include "asm-parse.h"
 
 #define DEFAULT_OUTPUT_FILE "b.out"
 #define DEFAULT_OUTPUT_FORMAT WRITER_BITS BITS_SUFFIX_SNP
+
+extern FILE *yyin;
 
 struct source {
   struct source_public public;
@@ -36,67 +42,43 @@ struct source {
   size_t indexsz;
 };
 
-enum sym_type {
-  SYM_LABEL,
-};
-
-struct symbol {
-  char *name;
-  enum sym_type type;
-  addr_t value;
-};
-
-enum lex {
-  LEX_START,
-  LEX_INSTR,
-  LEX_OPERAND,
-  LEX_SURPLUS_OPERANDS,
-  LEX_COMMENT,
-};
-
 int verbose;
 
-static int symsort(const void *a, const void *b) {
-  const struct symbol *sa = (const struct symbol *) a;
-  const struct symbol *sb = (const struct symbol *) b;
-  return strcmp(sa->name, sb->name);
-}
-
-static int symsearch(const void *key, const void *a) {
-  return symsort(&key, a);
-}
-
 static void init(void) {
+  sym_init();
   arch_init();
 }
 
+static void finit(void) {
+  arch_finit();
+  sym_finit();
+}
+
+void yyerror(YYLTYPE *yylloc, struct ast_node **root, char const *error) {
+  fprintf(stderr, "yyerror: %d.%d-%d.%d: %s\n",
+          yylloc->start.line, yylloc->start.col,
+          yylloc->end.line, yylloc->end.col,
+          error);
+}
+
 void free_abs(struct asm_abstract *abstract) {
-  if (abstract->label)
-    free(abstract->label);
-  if (abstract->instr)
-    free(abstract->instr);
-  if (abstract->opr_str)
-    free(abstract->opr_str);
 }
 
 int assemble_one(struct section *section,
-                 struct symbol *symbols, size_t symbol_count,
                  struct asm_abstract *abstract, bool first_pass) {
+  struct symbol *sym;
   int rc = 0;
 
   if (!first_pass && abstract->opr_type == OPR_SYM) {
-    struct symbol *sym;
-    sym = bsearch(abstract->opr_str, symbols, symbol_count, sizeof *symbols, symsearch);
-    if (sym == NULL || sym->type != SYM_LABEL) {
-      fprintf(stderr, "error: symbol '%s' not found\n", abstract->opr_str);
+    sym = sym_lookup(SYM_T_LABEL, abstract->operand_sym.name);
+    if (!sym)
       return ENOENT;
-    }
-    abstract->opr_effective = sym->value;
+    abstract->opr_effective = sym->val.numeric;
   } else {
     abstract->opr_effective = abstract->opr_num;
   }
 
-  if (verbose)
+  if (verbose && !first_pass)
     asm_log_abstract(abstract);
 
   if (abstract->flags & HAS_ORG) {
@@ -108,9 +90,9 @@ int assemble_one(struct section *section,
   }
 
   if (!first_pass && abstract->flags & HAS_INSTR) {
-    const struct mnemonic *m = arch_find_instr(abstract->instr);
+    const struct mnemonic *m = arch_find_instr(abstract->instr.name);
     if (m == NULL) {
-      fprintf(stderr, "no such mnemonic %s\n", abstract->instr);
+      fprintf(stderr, "no such mnemonic %s\n", abstract->instr.name);
       return EINVAL;
     }
 
@@ -138,37 +120,20 @@ int assemble_one(struct section *section,
   return rc;
 }
 
-int pass_one(struct section *section, struct symbol **symbols, struct asm_abstract *abstract, size_t length) {
-  struct symbol *syms = NULL;
-  size_t symsz = 0;
-  off_t symptr = 0;
+void pass_one(struct section *section, struct asm_abstract *abstract, size_t length) {
   int i;
   addr_t saved_cursor = section->cursor;
 
   for (i = 0; i < length; i++) {
-    if (abstract[i].flags & HAS_LABEL) {
-      if (symptr == symsz) {
-        symsz = (symsz == 0) ? 32 : symsz << 1;
-        syms = realloc(syms, sizeof *syms * symsz);
-      }
-      syms[symptr].type = SYM_LABEL;
-      syms[symptr].name = strdup(abstract[i].label);
-      syms[symptr].value = section->cursor;
-      symptr++;
-    }
-    assemble_one(section, NULL, 0, abstract + i, true);
+    if (abstract[i].flags & HAS_LABEL)
+      sym_add_num(SYM_T_LABEL, abstract[i].label.name, section->cursor);
+    assemble_one(section, abstract + i, true);
   }
 
-  qsort(syms, symptr, sizeof *syms, symsort);
-
   section->cursor = saved_cursor;
-  *symbols = syms;
-  return symptr;
 }
 
 int assemble(struct section *section,
-             struct symbol *symbols,
-             size_t symbol_count,
              struct asm_abstract *abstract,
              size_t abstract_count) {
   int rc = 0;
@@ -178,7 +143,7 @@ int assemble(struct section *section,
     fprintf(stderr, "Abstract assembly source:\n");
   for (i = 0; i < abstract_count; i++) {
     if (rc == 0)
-      rc = assemble_one(section, symbols, symbol_count, abstract + i, false);
+      rc = assemble_one(section, abstract + i, false);
     free_abs(abstract + i);
   }
 
@@ -192,21 +157,29 @@ long seek_to_line(struct source *source, int line) {
     return -EOPNOTSUPP;
   } else if (line >= 1 && line <= source->lines) {
     long offset = source->index[line - 1];
-    fseek(source->stream, offset, SEEK_SET);
-    return offset;
+    if (offset == -1) {
+      return -ENOENT;
+    } else {
+      fseek(source->stream, offset, SEEK_SET);
+      return offset;
+    }
   } else {
     fprintf(stderr, "line out of range: %s:%d\n", source->public.path, line);
     return -ERANGE;
   }
 }
 
-ssize_t lex(struct asm_abstract **abs_ret, struct source *source) {
+ssize_t parse(struct asm_abstract **abs_ret, struct source *source) {
   struct asm_abstract *buf = NULL;
+  struct asm_abstract a = { 0 };
+  struct ast_node *root;
   char srcline[1024];
   size_t bufsz = 0;
   off_t bufptr = 0;
   int rc = 0;
-  int line_num;
+  int line_num __attribute__((unused));
+  int stmt_i;
+  struct ast_node *stmt;
 
   srcline[sizeof srcline - 1] = EOF;
 
@@ -238,88 +211,95 @@ ssize_t lex(struct asm_abstract **abs_ret, struct source *source) {
       rc = -errno;
       goto finish;
     }
+    memset(source->index, '\377', source->indexsz * sizeof *source->index);
   }
 
-  for (line_num = 1;rc == 0 && !feof(source->stream); line_num++) {
-    char *tok, *end, *saveptr, *line;
-    struct asm_abstract abstract = { .source = &source->public, .line = line_num };
-    enum lex state = LEX_START;
+  yyin = source->stream;
 
-    if (source->seekable) {
-      if (source->lines == source->indexsz) {
-        source->indexsz <<= 1;
-        source->index = realloc(source->index, sizeof *source->index * source->indexsz);
-      }
-      source->index[line_num - 1] = ftell(source->stream);
-      source->lines++;
-    }
+  rc = yyparse(&root);
+  if (rc != 0) {
+    rc = EHANDLED;
+    goto finish;
+  }
 
-    if (fgets(srcline, sizeof srcline, source->stream) == NULL) {
-      rc = errno;
-      goto finish;
-    }
-    if (!feof(source->stream) && !strchr(srcline, '\n')) {
-      fprintf(stderr, "%s:%d: line too long\n", source->public.leaf, line_num);
-      rc = EHANDLED;
-      goto finish;
-    }
+  if (verbose) {
+    fprintf(stderr, "Abstract Syntax Tree:\n");
+    ast_plot_tree(stderr, root);
+    fprintf(stderr, "\n");
+  }
 
-    for (line = srcline; (tok = strtok_r(line, " \t\n", &saveptr)) != NULL; line = NULL) {
-      size_t toklen = strlen(tok);
+  assert(root->t == AST_LIST);
 
-      if (state == LEX_START) {
-        addr_t a = strtoul(tok, &end, 10);
-        if (end[0] == '\0' ||
-            (end[0] == ':' &&
-             end[1] == '\0')) {
-          *end = '\0';
-          abstract.org = a;
-          abstract.flags |= HAS_ORG;
-        } else if (tok[toklen - 1] == ':') {
-          if (end == tok) {
-            tok[toklen - 1] = '\0';
-            abstract.flags |= HAS_LABEL;
-            abstract.label = strdup(tok);
-          } else {
-            fprintf(stderr, "%s:%d: label cannot begin with a digit: %s\n",
-                    source->public.leaf, line_num, tok);
-            rc = EHANDLED;
-            goto finish;
-          }
-        } else {
-          state = LEX_INSTR;
-        }
-      }
-      if (strncmp(tok, "--", 2) == 0 ||
-          strncmp(tok, ";", 1) == 0) {
-        state = LEX_COMMENT;
-      }
-      if (state == LEX_INSTR) {
-        abstract.flags |= HAS_INSTR;
-        abstract.instr = strdup(tok);
-        state = LEX_OPERAND;
-      } else if (state == LEX_OPERAND) {
-        abstract.opr_num = strtoul(tok, &end, 0);
-        if (end == tok) {
-          abstract.opr_type = OPR_SYM;
-          abstract.opr_str = strdup(tok);
-        } else {
-          abstract.opr_type = OPR_NUM;
-        }
-        state = LEX_SURPLUS_OPERANDS;
-      } else if (state == LEX_SURPLUS_OPERANDS) {
-        fprintf(stderr, "surplus operand: %s\n", tok);
-        rc = EHANDLED;
-        goto finish;
-      }
-    }
-
+  for (stmt_i = 0; stmt_i < root->v.list.length; stmt_i++) {
+    struct asm_abstract new_a = { 0 };
     if (bufptr == bufsz) {
       bufsz = (bufsz == 0) ? 128 : bufsz << 1;
       buf = realloc(buf, sizeof *buf * bufsz);
     }
-    buf[bufptr++] = abstract;
+
+    stmt = &root->v.list.nodes[stmt_i];
+    new_a.source = &source->public;
+    new_a.line = stmt->debug.loc.start.line;
+
+    if (stmt_i == 0)
+      a = new_a;
+
+    if (source->seekable) {
+      if (a.line > source->lines)
+        source->lines = a.line;
+      if (source->lines >= source->indexsz) {
+        source->indexsz <<= 1;
+        source->index = realloc(source->index, sizeof *source->index * source->indexsz);
+        memset(source->index + (source->indexsz >> 1), '\377', sizeof *source->index * (source->indexsz >> 1));
+      }
+      if (source->index[a.line - 1])
+        source->index[a.line - 1] = stmt->debug.loc.start.offset;
+    }
+
+    if (stmt->t == AST_LABEL) {
+      if (a.flags & (HAS_ORG | HAS_LABEL)) {
+        buf[bufptr++] = a; a = new_a;
+      }
+      a.flags |= HAS_LABEL;
+      a.label = stmt->v.nameref;
+    }
+
+    if (stmt->t == AST_ORG) {
+      if (a.flags & (HAS_ORG | HAS_LABEL)) {
+        buf[bufptr++] = a; a = new_a;
+      }
+      a.flags |= HAS_ORG;
+      a.org = stmt->v.number;
+    }
+
+    if (stmt->t == AST_INSTR) {
+      a.flags |= HAS_INSTR;
+      assert(stmt->v.tuple[0]->t == AST_NAME);
+      a.instr = stmt->v.tuple[0]->v.nameref;
+      a.n_operands = ast_count_list(stmt->v.tuple[1]);
+      if (stmt->v.tuple[1]->t == AST_TUPLE) {
+        struct ast_node *operand = stmt->v.tuple[1]->v.tuple[0];
+        switch (operand->t) {
+        case AST_LABEL:
+        case AST_NAME:
+          a.opr_type = OPR_SYM;
+          a.operand_sym = operand->v.nameref;
+          break;
+        case AST_NUMBER:
+          a.opr_type = OPR_NUM;
+          a.opr_num = operand->v.number;
+          break;
+        default:
+          assert(!"invalid child node to instruction");
+        }
+      } else {
+        assert(stmt->v.tuple[1]->t == AST_NIL);
+      }
+      buf[bufptr++] = a; a = new_a;
+    }
   }
+
+  ast_free_tree(root);
 
 finish:
   *abs_ret = buf;
@@ -362,8 +342,6 @@ int main(int argc, char *argv[]) {
   struct asm_abstract *abstract = NULL;
   size_t abstract_count;
   struct source *sources = NULL;
-  struct symbol *symbols = NULL;
-  size_t symbol_count = 0;
   const struct format *format;
   const char *output = DEFAULT_OUTPUT_FILE;
   const char *output_format = DEFAULT_OUTPUT_FORMAT;
@@ -434,25 +412,19 @@ int main(int argc, char *argv[]) {
     source->public.leaf = strdup(basename(str));
     free(str);
 
-    rc = lex(&abstract, source);
+    rc = parse(&abstract, source);
     if (rc < 0) {
       rc = -rc;
     } else {
       abstract_count = rc;
 
-      symbol_count = pass_one(&section, &symbols, abstract, abstract_count);
+      pass_one(&section, abstract, abstract_count);
 
       if (verbose) {
-        fprintf(stderr, "Symbol table:\n");
-        for (i = 0; i < symbol_count; i++) {
-          fprintf(stderr, "  %-6s %20s 0x%08x\n",
-                  symbols[i].type == SYM_LABEL ? "LABEL" : "",
-                  symbols[i].name,
-                  symbols[i].value);
-        }
+        sym_print_table(SYM_T_LABEL);
+        sym_print_table(SYM_T_MNEMONIC);
       }
-
-      rc = assemble(&section, symbols, symbol_count, abstract, abstract_count);
+      rc = assemble(&section, abstract, abstract_count);
     }
   }
 
@@ -467,11 +439,14 @@ int main(int argc, char *argv[]) {
       char *str;
       size_t len = -1;
 
-      if (sd->debug && seek_to_line(src, sd->debug->line) >= 0) {
+      if (sd->debug && sd->debug->line > 0 && seek_to_line(src, sd->debug->line) >= 0 &&
+          !feof(src->stream) && !ferror(src->stream)) {
         str = fgets(srcline, sizeof srcline, src->stream);
-        len = strlen(str);
-        if (str[len - 1] == '\n')
-          str[len - 1] = '\0';
+        if (str != NULL) {
+          len = strlen(str);
+          if (str[len - 1] == '\n')
+            str[len - 1] = '\0';
+        }
       }
       printf("  %08x: %08x %10.10s:%-5d %-60.60s\n",
              a, sd->value,
@@ -507,8 +482,9 @@ int main(int argc, char *argv[]) {
     }
     free(sources);
   }
-  free(symbols);
   free(abstract);
+
+  finit();
 
   return rc == 0 ? 0 : 1;
 }

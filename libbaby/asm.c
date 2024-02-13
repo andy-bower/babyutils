@@ -18,6 +18,7 @@
 
 #include "butils.h"
 #include "arch.h"
+#include "symbols.h"
 #include "asm.h"
 
 void asm_log_abstract(struct asm_abstract *abstract) {
@@ -27,10 +28,10 @@ void asm_log_abstract(struct asm_abstract *abstract) {
             abstract->flags & HAS_INSTR ? "INSTR" : "",
             abstract->n_operands,
             abstract->org,
-            abstract->flags & HAS_LABEL ? abstract->label : "",
-            abstract->flags & HAS_INSTR ? abstract->instr : "",
+            abstract->flags & HAS_LABEL ? abstract->label.name : "",
+            abstract->flags & HAS_INSTR ? abstract->instr.name : "",
             abstract->opr_effective,
-            abstract->opr_type == OPR_SYM ? abstract->opr_str : "",
+            abstract->opr_type == OPR_SYM ? abstract->operand_sym.name : "",
             abstract->source ? abstract->source->leaf : "",
             abstract->line);
 }

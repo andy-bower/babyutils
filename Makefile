@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: MIT
 # (c) Copyright 2023 Andrew Bower
 
-CFLAGS ?= -O2 -g -Wall -Werror -MMD -MP
-LDFLAGS ?= -O2 -g
+CFLAGS ?= -g -Wall -Werror -MMD -MP -D_GNU_SOURCE
+LDFLAGS ?= -g
 prefix ?= /usr/local
 INSTALL ?= install
 MANDIR ?= share/man
 DOCDIR ?= share/doc/$(name)
 LICENSESDIR ?= share/doc/$(name)
+YACC.y=bison
 
 name=babyutils
 
@@ -26,9 +27,10 @@ LDLIBS=$(addprefix -l,$(LIBS))
 
 r:=$(DESTDIR)$(prefix)
 
-all_targets: $(LIBFILES) $(EXES)
+DEP=*.d $(foreach d,$(SUBDIRS),$(addprefix $d/,$($(d)_DEP)))
+GENERATED=$(foreach d,$(SUBDIRS),$(addprefix $d/,$($(d)_GENERATED)))
 
-DEP=*.d $(foreach d,$(SUBDIRS),$($(d)_DEP))
+all_targets: $(LIBFILES) $(EXES) $(GENERATED)
 
 -include $(DEP)
 
@@ -59,7 +61,7 @@ bsim: bsim.o libbaby.a
 bdump: bdump.o libbaby.a
 
 clean:
-	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o bdump.o libbaby/*.o test/*.out $(DEP)
+	$(RM) $(EXES) $(LIBFILES) bas.o bsim.o bdump.o libbaby/*.o test/*.out $(DEP) $(GENERATED)
 
 test: bas bsim
 	./bas -m -O bits.snp -o test/test-jmp.out test/test-jmp.asm

@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "symbols.h"
+
 /* Constants */
 
 #define HAS_ORG   01
@@ -26,10 +28,10 @@ struct asm_abstract {
   int flags;
   int n_operands;
   addr_t org;
-  char *label;
-  char *instr;
+  struct symref label;
+  struct symref instr;
   enum operand_type opr_type;
-  char *opr_str;
+  struct symref operand_sym;
   num_t opr_num;
   num_t opr_effective;
   struct source_public *source;

@@ -21,6 +21,7 @@
 
 #include "butils.h"
 #include "arch.h"
+#include "symbols.h"
 #include "asm.h"
 #include "objfile.h"
 #include "loader.h"
@@ -70,7 +71,7 @@ int render_instr(char *buf, size_t max, size_t *ptr, struct asm_abstract *a) {
   int ret;
   int i;
 
-  ret = snprintf(buf + *ptr, max - *ptr, "%s", a->instr);
+  ret = snprintf(buf + *ptr, max - *ptr, "%s", a->instr.name);
   if (ret < 0) {
     perror("snprintf");
     return errno;
@@ -132,7 +133,7 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 
     if (addr == 1) {
       d->alts[0].flags |= HAS_LABEL | HAS_ORG;
-      d->alts[0].label = "_start";
+      d->alts[0].label = *sym_add_num(SYM_T_LABEL, "_start", addr);
     } else if (auto_label) {
       d->alts[0].flags |= HAS_ORG;
     }
@@ -146,14 +147,14 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       case DATA:
         a->opr_type = OPR_NUM;
         a->n_operands = 1;
-        a->instr = "NUM";
+        a->instr = *sym_getref(SYM_T_MNEMONIC, "NUM");
         a->opr_effective = d->w;
         d->n_alts++;
         break;
       case INSTR:
         a->opr_type = OPR_NUM;
         a->n_operands = m->ins->operands;
-	a->instr = m->name;
+	a->instr = *sym_getref(SYM_T_MNEMONIC, m->name);
         a->opr_effective = d->parts.operand;
         d->n_alts++;
         break;
@@ -178,7 +179,7 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       asm_log_abstract(&ad[addr].alts[0]);
 
     if (a->flags & HAS_LABEL)
-      printf("%s:\n", a->label);
+      printf("%s:\n", a->label.name);
 
     if (a->flags & HAS_ORG)
       printf("%02d:\n", addr);
@@ -201,7 +202,14 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 }
 
 static void init(void) {
+  sym_init();
   arch_init();
+}
+
+static void finit(void) {
+  loaders_finit();
+  arch_init();
+  sym_init();
 }
 
 int main(int argc, char *argv[]) {
@@ -289,7 +297,7 @@ finish:
   if (loader != NULL)
     loader->close(loader, &exe);
 
-  loaders_finit();
+  finit();
 
   return rc == 0 ? 0 : 1;
 }

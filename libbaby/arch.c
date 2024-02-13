@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "symbols.h"
 #include "arch.h"
 
 const struct instr I_JMP = { OP_JMP, 1 };
@@ -110,6 +111,13 @@ void arch_init(void) {
     entry->order = sub_order;
   }
   qsort(arch_state.instr_index, babysz, sizeof *arch_state.instr_index, instrindexsort);
+
+  /* Register mnemonics as symbols */
+  for (i = 0; i < babysz; i++) {
+    struct mnemonic *m = baby_mnemonics + i;
+    struct symref *ref = sym_getref(SYM_T_MNEMONIC, m->name);
+    sym_setval(ref, true, (union symval) { .internal = m });
+  }
 }
 
 void arch_finit(void) {
