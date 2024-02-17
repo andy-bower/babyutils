@@ -15,7 +15,7 @@ SUBDIRS+=$(d)
 LIBS+=$(this)
 
 %.c %.h: %.y
-	$(YACC.y) -o$(<:.y=.c) -H$(<:.y=.h) $<
+	$(YACC.y) -o$(<:.y=.c) --defines=$(<:.y=.h) $<
 
 $(d)/asm-ast.o: $(d)/asm-parse.h
 

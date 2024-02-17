@@ -144,7 +144,7 @@ static struct ast_node *maybe_tuple(struct ast_node *l, struct ast_node *r) {
 
 %verbose
 %define parse.trace
-%define parse.error detailed
+%define parse.error verbose
 %define api.pure
 %locations
 
