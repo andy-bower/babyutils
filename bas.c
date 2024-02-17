@@ -423,6 +423,8 @@ int main(int argc, char *argv[]) {
       if (verbose) {
         sym_print_table(SYM_T_LABEL);
         sym_print_table(SYM_T_MNEMONIC);
+        sym_print_table(SYM_T_RAW);
+        sym_print_table(SYM_T_MACRO);
       }
       rc = assemble(&section, abstract, abstract_count);
     }

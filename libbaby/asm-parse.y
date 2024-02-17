@@ -110,6 +110,15 @@ static struct ast_node *mk_instr(struct ast_node *mnemonic, struct ast_node *ope
   return mk_node((struct ast_node) { .t = AST_INSTR, .v.tuple = { mnemonic, operands } });
 }
 
+static struct ast_node *mk_macro(char *macro,
+                                 struct ast_node *arguments,
+                                 struct ast_node *statements) {
+  return mk_node((struct ast_node) { .t = AST_MACRO, .v.tuple = {
+    mk_symbol(SYM_T_MACRO, macro),
+    mk_tuple(arguments, mk_list(statements))
+  } });
+}
+
 /*
 static struct ast_node *maybe_tuple(struct ast_node *l, struct ast_node *r) {
   if (l != NULL && l->t == AST_NIL) {
@@ -167,9 +176,11 @@ typedef struct {
 %define api.location.type {src_loc_t}
 %define api.value.type union
 %token <char *> HEX OCTAL DECIMAL BINARY NAME COLON EOL COMMA
+%token <char *> MACRO ENDM CONTINUATION
 %nterm <struct ast_node *> file stmts stmt location instr
 %nterm <struct ast_node *> number number_not_octal
 %nterm <struct ast_node *> mnemonic operands expr eol
+%nterm <struct ast_node *> macro arguments
 %%
 file: eol stmts { *root = mk_list($2); }
     | stmts { *root = mk_list($1); };
@@ -182,7 +193,14 @@ stmts: stmts stmt { $$ = mk_tuple($2, $1); }
 
 stmt: location COLON eol { $$ = $1; SAVE_DEBUG($$); }
     | location COLON { $$ = $1; SAVE_DEBUG($$); }
-    | instr eol { $$ = $1; SAVE_DEBUG($$); };
+    | instr eol { $$ = $1; SAVE_DEBUG($$); }
+    | macro eol { $$ = $1; SAVE_DEBUG($$); };
+
+macro: NAME MACRO arguments eol stmts ENDM { $$ = mk_macro($1, $3, $5); }
+
+arguments: NAME COMMA arguments { $$ = mk_tuple(mk_symbol(SYM_T_RAW, $1), $3); }
+         | NAME { $$ = mk_tuple(mk_symbol(SYM_T_RAW, $1), mk_nil()); }
+         | %empty { $$ = mk_nil(); };
 
 location: number_not_octal { $$ = mk_org($1); }
         | NAME { $$ = mk_label($1); };

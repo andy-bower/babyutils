@@ -60,18 +60,24 @@ static void update_loc(YYLTYPE *yylloc, YYSTYPE *yylval) {
 
 %%
 
+\\[ \t]*\n              { /* continuation */ }
 [ \t]+                  { }
 \n+                     { return EOL; }
 -?0[xX][[:xdigit:]]+    { yylval->HEX = strdup(yytext); return HEX; }
 -?0[0-7]+               { yylval->OCTAL = strdup(yytext); return OCTAL; }
 -?[[:digit:]]+          { yylval->DECIMAL = strdup(yytext); return DECIMAL; }
 -?0[bB][01]+            { yylval->BINARY = strdup(yytext); return BINARY; }
+
+(?i:MACRO)              { return MACRO; }
+(?i:ENDM)               { return ENDM; }
+
 [_.$a-zA-Z][_.$a-zA-Z0-9]*  { yylval->NAME = strdup(yytext); return NAME; }
 :                       { return COLON; }
 ,                       { return COMMA; }
+
 --                      { BEGIN(comment); }
 ;                       { BEGIN(comment); }
-<comment>[^\n]*$            { BEGIN(INITIAL); /* return COMMENT; */ }
+<comment>[^\n]*$        { BEGIN(INITIAL); /* return COMMENT; */ }
 
 %%
 

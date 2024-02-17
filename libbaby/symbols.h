@@ -15,8 +15,21 @@
 /* Types */
 
 enum sym_type {
+  /* Symbols that are mnemonics (instruction, directive or macro) */
   SYM_T_MNEMONIC,
+
+  /* Symbols that are labels for absolute locations */
   SYM_T_LABEL,
+
+  /* Names without associated values. Used for scoped names such as
+   * macro arguments. These names are likely to be copied to create
+   * semantic symbols of some kind later that are bound to appropriate scope.
+   */
+  SYM_T_RAW,
+
+  /* Macros */
+  SYM_T_MACRO,
+
   SYM_T_MAX
 };
 

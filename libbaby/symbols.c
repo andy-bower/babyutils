@@ -24,6 +24,8 @@
 const char *sym_type_names[SYM_T_MAX] = {
   [ SYM_T_MNEMONIC] = "MNEMONIC",
   [ SYM_T_LABEL] = "LABEL",
+  [ SYM_T_RAW] = "RAW",
+  [ SYM_T_MACRO] = "MACRO",
 };
 
 struct sym_table {
@@ -191,10 +193,11 @@ void sym_print_table(enum sym_type type) {
   fprintf(stderr, "Symbol table (%s):\n", sym_type_names[type]);
   for (i = 0; i < tab->count; i++) {
     struct symbol *sym = tab->symbols + i;
-    fprintf(stderr, "  %-6s %20s 0x%08x\n",
+    fprintf(stderr, "  %-10s 0x%08x %c %s\n",
             sym_type_names[sym->ref.type],
-            sym->ref.name,
-            sym->val.numeric);
+            sym->val.numeric,
+            sym->defined ? 'D' : 'U',
+            sym->ref.name);
   }
 }
 

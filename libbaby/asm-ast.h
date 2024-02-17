@@ -27,6 +27,7 @@ enum ast_node_e {
   AST_NUMBER,
   AST_NAME,
   AST_LIST,
+  AST_MACRO,
 };
 
 struct ast_node;
