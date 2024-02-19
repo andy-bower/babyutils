@@ -90,7 +90,7 @@ static struct ast_node *mk_number(int base, char *str) {
 
 static struct ast_node *mk_symbol(enum sym_type sym_type, char *str) {
   struct ast_node *node;
-  node = mk_node((struct ast_node) { .t = AST_NAME, .v.nameref = *sym_getref(sym_type, str) });
+  node = mk_node((struct ast_node) { .t = AST_NAME, .v.nameref = *sym_getref(sym_root_context(), sym_type, str) });
   free(str);
   return node;
 }

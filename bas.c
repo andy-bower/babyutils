@@ -70,7 +70,7 @@ int assemble_one(struct section *section,
   int rc = 0;
 
   if (!first_pass && abstract->opr_type == OPR_SYM) {
-    sym = sym_lookup(SYM_T_LABEL, abstract->operand_sym.name);
+    sym = sym_lookup(abstract->context, SYM_T_LABEL, abstract->operand_sym.name);
     if (!sym)
       return ENOENT;
     abstract->opr_effective = sym->val.numeric;
@@ -126,7 +126,7 @@ void pass_one(struct section *section, struct asm_abstract *abstract, size_t len
 
   for (i = 0; i < length; i++) {
     if (abstract[i].flags & HAS_LABEL)
-      sym_add_num(SYM_T_LABEL, abstract[i].label.name, section->cursor);
+      sym_add_num(abstract->context, SYM_T_LABEL, abstract[i].label.name, section->cursor);
     assemble_one(section, abstract + i, true);
   }
 
@@ -240,6 +240,7 @@ ssize_t parse(struct asm_abstract **abs_ret, struct source *source) {
     stmt = &root->v.list.nodes[stmt_i];
     new_a.source = &source->public;
     new_a.line = stmt->debug.loc.start.line;
+    new_a.context = sym_root_context();
 
     if (stmt_i == 0)
       a = new_a;
@@ -421,10 +422,11 @@ int main(int argc, char *argv[]) {
       pass_one(&section, abstract, abstract_count);
 
       if (verbose) {
-        sym_print_table(SYM_T_LABEL);
-        sym_print_table(SYM_T_MNEMONIC);
-        sym_print_table(SYM_T_RAW);
-        sym_print_table(SYM_T_MACRO);
+        struct sym_context *context = sym_root_context();
+        int i;
+
+        for (i = 0; i < SYM_T_MAX; i++)
+          sym_print_table(context, i);
       }
       rc = assemble(&section, abstract, abstract_count);
     }

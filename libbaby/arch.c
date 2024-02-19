@@ -115,8 +115,8 @@ void arch_init(void) {
   /* Register mnemonics as symbols */
   for (i = 0; i < babysz; i++) {
     struct mnemonic *m = baby_mnemonics + i;
-    struct symref *ref = sym_getref(SYM_T_MNEMONIC, m->name);
-    sym_setval(ref, true, (union symval) { .internal = m });
+    struct symref *ref = sym_getref(sym_root_context(), SYM_T_MNEMONIC, m->name);
+    sym_setval(sym_root_context(), ref, true, (union symval) { .internal = m });
   }
 }
 

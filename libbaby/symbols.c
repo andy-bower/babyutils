@@ -40,7 +40,7 @@ struct sym_table {
   struct hsearch_data htab;
 };
 
-struct sym_table sym_tabs[SYM_T_MAX] = { { NULL } };
+struct sym_context *sym_global_context = NULL;
 
 static int symsort(const void *a, const void *b) {
   const struct symbol *sa = (const struct symbol *) a;
@@ -62,8 +62,8 @@ static int symcasesearch(const void *key, const void *a) {
   return symcasesort(&(struct symbol) { .ref.name = key }, a);
 }
 
-void sym_sort(enum sym_type type) {
-  struct sym_table *tab = sym_tabs + type;
+void sym_sort(struct sym_context *context, enum sym_type type) {
+  struct sym_table *tab = context->tables[type];
 
   assert(type < SYM_T_MAX);
 
@@ -79,34 +79,40 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup(enum sym_type type, const char *name) {
-  struct sym_table *tab = &sym_tabs[type];
-  struct symbol *sym;
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, const char *name) {
+  struct sym_table *tab;
+  struct symbol *sym = NULL;
 
   assert(type < SYM_T_MAX);
   assert(name);
 
-  if (!tab->sorted)
-    sym_sort(type);
+  while (context && !sym) {
+    tab = context->tables[type];
+    if (!tab->sorted)
+      sym_sort(context, type);
 
-  sym = bsearch(name, tab->symbols, tab->count, sizeof tab->symbols[0],
-                tab->case_insensitive ? symcasesearch : symsearch);
+    sym = bsearch(name, tab->symbols, tab->count, sizeof tab->symbols[0],
+                  tab->case_insensitive ? symcasesearch : symsearch);
+    context = context->parent;
+  }
+
   return sym; 
 }
 
-struct symref *sym_getref(enum sym_type type, const char *name) {
-  struct sym_table *tab = sym_tabs + type;
+struct symref *sym_getref(struct sym_context *context, enum sym_type type, const char *name) {
+  struct sym_table *tab;
   struct symbol *sym;
 
   assert(type < SYM_T_MAX);
 
-  sym = sym_lookup(type, name);
+  sym = sym_lookup(context, type, name);
 
   /* Return existing ref if found */
   if (sym)
     return &sym->ref;
 
   /* Add new ref if not */
+  tab = context->tables[type];
   if (tab->count == tab->capacity) {
     tab->capacity = (tab->capacity == 0) ? 32 : tab->capacity << 1;
     tab->symbols = realloc(tab->symbols, sizeof tab->symbols[0] * tab->capacity);
@@ -120,10 +126,10 @@ struct symref *sym_getref(enum sym_type type, const char *name) {
   return &sym->ref;
 }
 
-union symval sym_getval(struct symref *ref) {
+union symval sym_getval(struct sym_context *context, struct symref *ref) {
   struct symbol *sym;
 
-  sym = sym_lookup(ref->type, ref->name);
+  sym = sym_lookup(context, ref->type, ref->name);
 
   if (sym == NULL || sym->ref.type != ref->type) {
     fprintf(stderr, "error: symbol '%s' not found\n", ref->name);
@@ -133,62 +139,113 @@ union symval sym_getval(struct symref *ref) {
   return sym->val;
 }
 
-void sym_setval(struct symref *ref, bool defined, union symval val) {
+void sym_setval(struct sym_context *context, struct symref *ref, bool defined, union symval val) {
   struct symbol *sym;
 
-  sym = sym_lookup(ref->type, ref->name);
+  sym = sym_lookup(context, ref->type, ref->name);
 
   assert(sym);
   sym->defined = defined;
   sym->val = defined ? val : (union symval) { .numeric = 0 };
 }
 
+int sym_table_create(struct sym_context *context, enum sym_type type) {
+  struct sym_table *table;
+
+  assert(context->tables[type] == NULL);
+  table = (struct sym_table *) calloc(1, sizeof *table);
+  if (table == NULL)
+    return errno;
+
+  if (type == SYM_T_MNEMONIC)
+    table->case_insensitive = true;
+
+  if (hcreate_r(50, &table->htab) == 0)
+    return errno;
+
+  context->tables[type] = table;
+
+  return 0;
+}
+
+void sym_table_destroy(struct sym_context *context, enum sym_type type) {
+  struct sym_table *table = context->tables[type];
+  int j;
+
+  assert(table);
+  hdestroy_r(&table->htab);
+  for (j = 0; j < table->count; j++) {
+    free((void *)table->symbols[j].ref.name);
+  }
+  free(table);
+  context->tables[type] = NULL;
+}
+
+struct sym_context *sym_context_create(struct sym_context *parent) {
+  struct sym_context *context = (struct sym_context *) calloc(1, sizeof *context);
+  context->parent = parent;
+  return context;
+}
+
+void sym_context_destroy(struct sym_context *context) {
+ int i;
+
+  assert(context);
+  for (i = 0; i < SYM_T_MAX; i++) {
+    if (context->tables[i])
+      sym_table_destroy(context, i);
+  }
+
+  free(context);
+}
+
 void sym_init(void) {
   int rc;
   int i;
 
-  memset(sym_tabs, '\0', sizeof sym_tabs);
+  sym_global_context = sym_context_create(NULL);
+  if (sym_global_context == NULL) {
+    perror("creating global context");
+    exit(1);
+  }
 
+  /* Root/global context has one of each symbol table type. */
   for (i = 0; i < SYM_T_MAX; i++) {
-    rc = hcreate_r(1000, &sym_tabs[i].htab);
-    if (rc == 0) {
-      perror("hcreate_r");
+    rc = sym_table_create(sym_global_context, i);
+    if (rc != 0) {
+      perror("sym_table_create");
       exit(1);
     }
   }
-
-  sym_tabs[SYM_T_MNEMONIC].case_insensitive = true;
 }
 
 void sym_finit(void) {
-  int i, j;
-
-  for (i = 0; i < SYM_T_MAX; i++) {
-    hdestroy_r(&sym_tabs[i].htab);
-    for (j = 0; j < sym_tabs[i].count; j++) {
-      free((void *)sym_tabs[i].symbols[j].ref.name);
-    }
-  }
+  sym_context_destroy(sym_global_context);
+  sym_global_context = NULL;
 }
 
-struct symref *sym_add(enum sym_type type, const char *name, bool defined, union symval value) {
+struct sym_context *sym_root_context(void) {
+  return sym_global_context;
+}
+
+struct symref *sym_add(struct sym_context *context, enum sym_type type, const char *name, bool defined, union symval value) {
   struct symref *symref;
 
   assert(type < SYM_T_MAX);
 
-  symref = sym_getref(type, name);
-  sym_setval(symref, defined, value);
+  symref = sym_getref(context, type, name);
+  sym_setval(context, symref, defined, value);
   return symref;
 }
 
-void sym_print_table(enum sym_type type) {
-  struct sym_table *tab = sym_tabs + type;
+void sym_print_table(struct sym_context *context, enum sym_type type) {
+  struct sym_table *tab = context->tables[type];
   int i;
 
   assert(type < SYM_T_MAX);
 
   if (!tab->sorted)
-    sym_sort(type);
+    sym_sort(context, type);
 
   fprintf(stderr, "Symbol table (%s):\n", sym_type_names[type]);
   for (i = 0; i < tab->count; i++) {

@@ -95,6 +95,7 @@ int render_instr(char *buf, size_t max, size_t *ptr, struct asm_abstract *a) {
 int disassemble_section(struct segment *segment, struct vm *vmem) {
   enum { DATA, INSTR, MAX } type[MAX] = { DATA, MAX };
   struct dis_abstract *ad;
+  struct sym_context *context = sym_root_context();
   addr_t addr;
   int i;
 
@@ -133,7 +134,7 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 
     if (addr == 1) {
       d->alts[0].flags |= HAS_LABEL | HAS_ORG;
-      d->alts[0].label = *sym_add_num(SYM_T_LABEL, "_start", addr);
+      d->alts[0].label = *sym_add_num(context, SYM_T_LABEL, "_start", addr);
     } else if (auto_label) {
       d->alts[0].flags |= HAS_ORG;
     }
@@ -147,14 +148,14 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       case DATA:
         a->opr_type = OPR_NUM;
         a->n_operands = 1;
-        a->instr = *sym_getref(SYM_T_MNEMONIC, "NUM");
+        a->instr = *sym_getref(context, SYM_T_MNEMONIC, "NUM");
         a->opr_effective = d->w;
         d->n_alts++;
         break;
       case INSTR:
         a->opr_type = OPR_NUM;
         a->n_operands = m->ins->operands;
-	a->instr = *sym_getref(SYM_T_MNEMONIC, m->name);
+        a->instr = *sym_getref(context, SYM_T_MNEMONIC, m->name);
         a->opr_effective = d->parts.operand;
         d->n_alts++;
         break;

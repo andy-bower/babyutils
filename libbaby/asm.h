@@ -25,6 +25,7 @@ struct source_public {
 };
 
 struct asm_abstract {
+  struct sym_context *context;
   int flags;
   int n_operands;
   addr_t org;
