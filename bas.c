@@ -61,8 +61,29 @@ void yyerror(YYLTYPE *yylloc, struct ast_node **root, char const *error) {
           error);
 }
 
-void free_abs(struct asm_abstract *abstract) {
+struct asm_buf {
+  struct asm_abstract *records;
+  size_t sz;
+  off_t ptr;
+};
+
+static void asm_buf_push(struct asm_buf *buf, struct asm_abstract *record) {
+  if (buf->ptr == buf->sz) {
+    buf->sz = (buf->sz == 0) ? 128 : buf->sz << 1;
+    buf->records = realloc(buf->records, sizeof buf->records[0] * buf->sz);
+  }
+  if (buf->records == NULL) {
+    perror("allocating abstract assembly buffer");
+    exit(1);
+  }
+  buf->records[buf->ptr++] = *record;
 }
+
+static void asm_buf_free(struct asm_buf *buf) {
+  free(buf->records);
+  memset(buf, '\0', sizeof *buf);
+}
+
 
 int assemble_one(struct section *section,
                  struct asm_abstract *abstract, bool first_pass) {
@@ -120,31 +141,30 @@ int assemble_one(struct section *section,
   return rc;
 }
 
-void pass_one(struct section *section, struct asm_abstract *abstract, size_t length) {
+void pass_one(struct section *section, struct asm_buf *abstract) {
   int i;
   addr_t saved_cursor = section->cursor;
 
-  for (i = 0; i < length; i++) {
-    if (abstract[i].flags & HAS_LABEL)
-      sym_add_num(abstract->context, SYM_T_LABEL, abstract[i].label.name, section->cursor);
-    assemble_one(section, abstract + i, true);
+  for (i = 0; i < abstract->ptr; i++) {
+    struct asm_abstract *a = &abstract->records[i];
+    if (a->flags & HAS_LABEL)
+      sym_add_num(a->context, SYM_T_LABEL, a->label.name, section->cursor);
+    assemble_one(section, a, true);
   }
 
   section->cursor = saved_cursor;
 }
 
 int assemble(struct section *section,
-             struct asm_abstract *abstract,
-             size_t abstract_count) {
+             struct asm_buf *abstract) {
   int rc = 0;
   int i;
 
   if (verbose)
     fprintf(stderr, "Abstract assembly source:\n");
-  for (i = 0; i < abstract_count; i++) {
+  for (i = 0; i < abstract->ptr; i++) {
     if (rc == 0)
-      rc = assemble_one(section, abstract + i, false);
-    free_abs(abstract + i);
+      rc = assemble_one(section, &abstract->records[i], false);
   }
 
   return rc;
@@ -169,17 +189,101 @@ long seek_to_line(struct source *source, int line) {
   }
 }
 
-ssize_t parse(struct asm_abstract **abs_ret, struct source *source) {
-  struct asm_abstract *buf = NULL;
-  struct asm_abstract a = { 0 };
+int parse_stmts(struct sym_context *context,
+                 struct asm_buf *buf,
+                 struct ast_node *list,
+                 struct source *source) {
+  struct ast_node *stmt;
+  struct ast_node *node;
+  struct asm_abstract a;
+  int stmt_i;
+
+  assert(list->t == AST_LIST);
+
+  for (stmt_i = 0; stmt_i < list->v.list.length; stmt_i++) {
+    struct asm_abstract new_a = { 0 };
+
+    stmt = &list->v.list.nodes[stmt_i];
+    new_a.source = &source->public;
+    new_a.line = stmt->debug.loc.start.line;
+    new_a.context = context;
+
+    if (stmt_i == 0)
+      a = new_a;
+
+    if (source->seekable) {
+      if (a.line > source->lines)
+        source->lines = a.line;
+      if (source->lines >= source->indexsz) {
+        source->indexsz <<= 1;
+        source->index = realloc(source->index, sizeof *source->index * source->indexsz);
+        memset(source->index + (source->indexsz >> 1), '\377', sizeof *source->index * (source->indexsz >> 1));
+      }
+      if (source->index[a.line - 1])
+        source->index[a.line - 1] = stmt->debug.loc.start.offset;
+    }
+
+    switch (stmt->t) {
+    case AST_LABEL:
+      if (a.flags & (HAS_ORG | HAS_LABEL)) {
+        asm_buf_push(buf, &a);
+        a = new_a;
+      }
+      a.flags |= HAS_LABEL;
+      a.label = stmt->v.nameref;
+      break;
+    case AST_ORG:
+      if (a.flags & (HAS_ORG | HAS_LABEL)) {
+        asm_buf_push(buf, &a);
+        a = new_a;
+      }
+      a.flags |= HAS_ORG;
+      a.org = stmt->v.number;
+      break;
+    case AST_INSTR:
+      a.flags |= HAS_INSTR;
+      assert(stmt->v.tuple[0]->t == AST_NAME);
+      a.instr = stmt->v.tuple[0]->v.nameref;
+
+      /* Iterate over tuple-based operand list */
+      a.n_operands = 0;
+      for (node = stmt->v.tuple[1]; node->t == AST_TUPLE; node = node->v.tuple[1]) {
+        struct ast_node *operand = node->v.tuple[0];
+
+        if (++a.n_operands > 1) {
+          fprintf(stderr, "assembly error: only one operand permitted\n");
+          return EINVAL;
+        }
+        switch (operand->t) {
+        case AST_LABEL:
+        case AST_NAME:
+          a.opr_type = OPR_SYM;
+          a.operand_sym = operand->v.nameref;
+          break;
+        case AST_NUMBER:
+          a.opr_type = OPR_NUM;
+          a.opr_num = operand->v.number;
+          break;
+        default:
+          assert(!"invalid operand child node to instruction");
+        }
+      }
+      assert(node->t == AST_NIL);
+      asm_buf_push(buf, &a);
+      a = new_a;
+      break;
+    default:
+      assert(!"unexpected AST node type in statement list");
+    }
+  }
+
+  return 0;
+}
+
+static ssize_t parse(struct asm_buf *buf, struct source *source) {
   struct ast_node *root;
   char srcline[1024];
-  size_t bufsz = 0;
-  off_t bufptr = 0;
   int rc = 0;
-  int line_num __attribute__((unused));
-  int stmt_i;
-  struct ast_node *stmt;
 
   srcline[sizeof srcline - 1] = EOF;
 
@@ -228,83 +332,12 @@ ssize_t parse(struct asm_abstract **abs_ret, struct source *source) {
     fprintf(stderr, "\n");
   }
 
-  assert(root->t == AST_LIST);
-
-  for (stmt_i = 0; stmt_i < root->v.list.length; stmt_i++) {
-    struct asm_abstract new_a = { 0 };
-    if (bufptr == bufsz) {
-      bufsz = (bufsz == 0) ? 128 : bufsz << 1;
-      buf = realloc(buf, sizeof *buf * bufsz);
-    }
-
-    stmt = &root->v.list.nodes[stmt_i];
-    new_a.source = &source->public;
-    new_a.line = stmt->debug.loc.start.line;
-    new_a.context = sym_root_context();
-
-    if (stmt_i == 0)
-      a = new_a;
-
-    if (source->seekable) {
-      if (a.line > source->lines)
-        source->lines = a.line;
-      if (source->lines >= source->indexsz) {
-        source->indexsz <<= 1;
-        source->index = realloc(source->index, sizeof *source->index * source->indexsz);
-        memset(source->index + (source->indexsz >> 1), '\377', sizeof *source->index * (source->indexsz >> 1));
-      }
-      if (source->index[a.line - 1])
-        source->index[a.line - 1] = stmt->debug.loc.start.offset;
-    }
-
-    if (stmt->t == AST_LABEL) {
-      if (a.flags & (HAS_ORG | HAS_LABEL)) {
-        buf[bufptr++] = a; a = new_a;
-      }
-      a.flags |= HAS_LABEL;
-      a.label = stmt->v.nameref;
-    }
-
-    if (stmt->t == AST_ORG) {
-      if (a.flags & (HAS_ORG | HAS_LABEL)) {
-        buf[bufptr++] = a; a = new_a;
-      }
-      a.flags |= HAS_ORG;
-      a.org = stmt->v.number;
-    }
-
-    if (stmt->t == AST_INSTR) {
-      a.flags |= HAS_INSTR;
-      assert(stmt->v.tuple[0]->t == AST_NAME);
-      a.instr = stmt->v.tuple[0]->v.nameref;
-      a.n_operands = ast_count_list(stmt->v.tuple[1]);
-      if (stmt->v.tuple[1]->t == AST_TUPLE) {
-        struct ast_node *operand = stmt->v.tuple[1]->v.tuple[0];
-        switch (operand->t) {
-        case AST_LABEL:
-        case AST_NAME:
-          a.opr_type = OPR_SYM;
-          a.operand_sym = operand->v.nameref;
-          break;
-        case AST_NUMBER:
-          a.opr_type = OPR_NUM;
-          a.opr_num = operand->v.number;
-          break;
-        default:
-          assert(!"invalid child node to instruction");
-        }
-      } else {
-        assert(stmt->v.tuple[1]->t == AST_NIL);
-      }
-      buf[bufptr++] = a; a = new_a;
-    }
-  }
+  rc = parse_stmts(sym_root_context(), buf, root, source);
 
   ast_free_tree(root);
 
 finish:
-  *abs_ret = buf;
-  return rc == 0 ? bufptr : -rc;
+  return rc;
 }
 
 int usage(FILE *to, int rc, const char *prog) {
@@ -340,8 +373,7 @@ int main(int argc, char *argv[]) {
   int num_sources;
   int option_index;
   struct section section = { 0 };
-  struct asm_abstract *abstract = NULL;
-  size_t abstract_count;
+  struct asm_buf abstract = { 0 };
   struct source *sources = NULL;
   const struct format *format;
   const char *output = DEFAULT_OUTPUT_FILE;
@@ -414,12 +446,8 @@ int main(int argc, char *argv[]) {
     free(str);
 
     rc = parse(&abstract, source);
-    if (rc < 0) {
-      rc = -rc;
-    } else {
-      abstract_count = rc;
-
-      pass_one(&section, abstract, abstract_count);
+    if (rc == 0) {
+      pass_one(&section, &abstract);
 
       if (verbose) {
         struct sym_context *context = sym_root_context();
@@ -428,7 +456,7 @@ int main(int argc, char *argv[]) {
         for (i = 0; i < SYM_T_MAX; i++)
           sym_print_table(context, i);
       }
-      rc = assemble(&section, abstract, abstract_count);
+      rc = assemble(&section, &abstract);
     }
   }
 
@@ -486,7 +514,7 @@ int main(int argc, char *argv[]) {
     }
     free(sources);
   }
-  free(abstract);
+  asm_buf_free(&abstract);
 
   finit();
 
