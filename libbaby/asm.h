@@ -47,6 +47,7 @@ extern struct strtab *strtab_src;
 
 /* Public functions */
 
-void asm_log_abstract(struct strtab *strtab, struct asm_abstract *abstract);
+extern void asm_log_abstract(struct strtab *strtab, struct asm_abstract *abstract);
+extern size_t mnemonic_debug_str(char *buf, size_t sz, struct mnemonic *mnemonic);
 
 #endif

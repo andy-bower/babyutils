@@ -31,7 +31,6 @@
 #define DEFAULT_OUTPUT_FORMAT WRITER_BITS BITS_SUFFIX_SNP
 
 extern FILE *yyin;
-struct strtab *strtab_src;
 
 struct source {
   struct source_public public;
@@ -94,9 +93,11 @@ int assemble_one(struct section *section,
   int rc = 0;
 
   if (!first_pass && abstract->opr_type == OPR_SYM) {
-    sym = sym_lookup(abstract->context, SYM_T_LABEL, abstract->operand_sym.name);
-    if (!sym)
-      return ENOENT;
+    sym = sym_lookup(abstract->context, SYM_T_LABEL, abstract->operand_sym.name, false);
+    if (!sym) {
+      fprintf(stderr, "label undefined: %s\n", SSTR(abstract->operand_sym.name));
+      return EHANDLED;
+    }
     abstract->opr_effective = sym->val.numeric;
   } else {
     abstract->opr_effective = abstract->opr_num;
@@ -193,9 +194,9 @@ long seek_to_line(struct source *source, int line) {
 }
 
 int parse_stmts(struct sym_context *context,
-                 struct asm_buf *buf,
-                 struct ast_node *list,
-                 struct source *source) {
+                struct asm_buf *buf,
+                struct ast_node *list,
+                struct source *source) {
   struct ast_node *stmt;
   struct ast_node *node;
   struct asm_abstract a;
@@ -243,9 +244,79 @@ int parse_stmts(struct sym_context *context,
       a.flags |= HAS_ORG;
       a.org = stmt->v.number;
       break;
+    case AST_MACRO:
+      {
+        struct mnemonic *m = calloc(1, sizeof *m);
+        union symval sv;
+
+        /* TODO: free mnemonic structure on exit */
+        assert(m != NULL);
+        assert(stmt->v.tuple[0]->t == AST_NAME);
+        assert(stmt->v.tuple[1]->t == AST_TUPLE);
+
+        /* TODO: lose the cast! */
+        m->name = (char *) SSTR(stmt->v.tuple[0]->v.str);
+        m->type = M_MACRO;
+        m->ast = stmt->v.tuple[1];
+        sv.internal = m;
+
+        sym_add(context, SYM_T_MNEMONIC,
+                stmt->v.tuple[0]->v.str, true, sv);
+      }
+      break;
     case AST_INSTR:
-      a.flags |= HAS_INSTR;
       assert(stmt->v.tuple[0]->t == AST_SYMBOL);
+      {
+        /* Handle macro application */
+        struct mnemonic *m = (struct mnemonic *) sym_getval(context, &stmt->v.tuple[0]->v.nameref).internal;
+        if (m) {
+          struct sym_context *new_context;
+          struct ast_node *macro = m->ast;
+          struct ast_node *actual_args;
+          struct ast_node *formal_args;
+
+          if (m->type == M_MACRO) {
+            int rc;
+            if (a.flags) {
+              /* Flush out any old stuff first */
+              asm_buf_push(buf, &a);
+              a = new_a;
+            }
+            new_context = sym_context_create(context);
+            rc = sym_table_create(new_context, SYM_T_LABEL);
+            if (rc != 0) return rc;
+
+            for (actual_args = stmt->v.tuple[1],
+                 formal_args = macro->v.tuple[0];
+                 actual_args->t == AST_TUPLE ||
+                 formal_args->t == AST_TUPLE;
+                 actual_args = actual_args->v.tuple[1],
+                 formal_args = formal_args->v.tuple[1]) {
+              if (formal_args->t == AST_NIL) {
+                fprintf(stderr, "too many arguments to macro %s\n", m->name);
+                return EINVAL;
+              } else if (actual_args->t == AST_NIL) {
+                fprintf(stderr, "insuficient arugments to macro %s\n", m->name);
+                return EINVAL;
+              }
+              assert(actual_args->v.tuple[0]->t == AST_NUMBER);
+              sym_add_num(new_context, SYM_T_LABEL,
+                          formal_args->v.tuple[0]->v.str,
+                          actual_args->v.tuple[0]->v.number);
+            }
+            if (verbose) {
+              fprintf(stderr, "local symbol table for application of macro %s\n", m->name);
+              sym_print_table(new_context, SYM_T_LABEL);
+            }
+
+            rc = parse_stmts(new_context, buf, macro->v.tuple[1], source);
+            if (rc != 0) return rc;
+            continue;
+          }
+        }
+      }
+
+      a.flags |= HAS_INSTR;
       a.instr = stmt->v.tuple[0]->v.nameref;
 
       /* Iterate over tuple-based operand list */
@@ -283,8 +354,7 @@ int parse_stmts(struct sym_context *context,
   return 0;
 }
 
-static ssize_t parse(struct asm_buf *buf, struct source *source) {
-  struct ast_node *root;
+static ssize_t parse(struct ast_node **root, struct asm_buf *buf, struct source *source) {
   char srcline[1024];
   int rc = 0;
 
@@ -323,7 +393,7 @@ static ssize_t parse(struct asm_buf *buf, struct source *source) {
 
   yyin = source->stream;
 
-  rc = yyparse(&root);
+  rc = yyparse(root);
   if (rc != 0) {
     rc = EHANDLED;
     goto finish;
@@ -331,13 +401,11 @@ static ssize_t parse(struct asm_buf *buf, struct source *source) {
 
   if (verbose) {
     fprintf(stderr, "Abstract Syntax Tree:\n");
-    ast_plot_tree(stderr, root);
+    ast_plot_tree(stderr, *root);
     fprintf(stderr, "\n");
   }
 
-  rc = parse_stmts(sym_root_context(), buf, root, source);
-
-  ast_free_tree(root);
+  rc = parse_stmts(sym_root_context(), buf, *root, source);
 
 finish:
   return rc;
@@ -375,6 +443,7 @@ int main(int argc, char *argv[]) {
   int listing = 0;
   int num_sources;
   int option_index;
+  struct ast_node *ast = NULL;
   struct section section = { 0 };
   struct asm_buf abstract = { 0 };
   struct source *sources = NULL;
@@ -448,7 +517,7 @@ int main(int argc, char *argv[]) {
     source->public.leaf = strdup(basename(str));
     free(str);
 
-    rc = parse(&abstract, source);
+    rc = parse(&ast, &abstract, source);
     if (rc == 0) {
       pass_one(&section, &abstract);
 
@@ -520,7 +589,10 @@ int main(int argc, char *argv[]) {
   }
   asm_buf_free(&abstract);
   section_free(&section);
+  if (ast)
+    ast_free_tree(ast);
   finit();
+  /* TODO: destroy additional symbol contexts! */
 
   return rc == 0 ? 0 : 1;
 }

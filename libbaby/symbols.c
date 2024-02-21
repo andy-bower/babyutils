@@ -19,6 +19,7 @@
 
 #include "butils.h"
 #include "arch.h"
+#include "asm.h"
 #include "strtab.h"
 #include "symbols.h"
 
@@ -83,7 +84,7 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name) {
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local) {
   struct sym_table *tab;
   struct symbol *sym = NULL;
 
@@ -91,12 +92,14 @@ struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_i
 
   while (context && !sym) {
     tab = context->tables[type];
-    if (!tab->sorted)
-      sym_sort(context, type);
+    if (tab) {
+      if (!tab->sorted)
+        sym_sort(context, type);
 
-    sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
-                  tab->case_insensitive ? symcasesearch : symsearch);
-    context = context->parent;
+      sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
+                    tab->case_insensitive ? symcasesearch : symsearch);
+    }
+    context = local ? NULL : context->parent;
   }
 
   return sym; 
@@ -108,7 +111,7 @@ struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_i
 
   assert(type < SYM_T_MAX);
 
-  sym = sym_lookup(context, type, name);
+  sym = sym_lookup(context, type, name, true);
 
   /* Return existing ref if found */
   if (sym)
@@ -132,7 +135,7 @@ struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_i
 union symval sym_getval(struct sym_context *context, struct symref *ref) {
   struct symbol *sym;
 
-  sym = sym_lookup(context, ref->type, ref->name);
+  sym = sym_lookup(context, ref->type, ref->name, false);
 
   if (sym == NULL || sym->ref.type != ref->type) {
     fprintf(stderr, "error: symbol '%s' not found\n", strtab_get(sym_strtab, ref->name));
@@ -145,7 +148,7 @@ union symval sym_getval(struct sym_context *context, struct symref *ref) {
 void sym_setval(struct sym_context *context, struct symref *ref, bool defined, union symval val) {
   struct symbol *sym;
 
-  sym = sym_lookup(context, ref->type, ref->name);
+  sym = sym_lookup(context, ref->type, ref->name, true);
 
   assert(sym);
   sym->defined = defined;
@@ -247,11 +250,20 @@ void sym_print_table(struct sym_context *context, enum sym_type type) {
   fprintf(stderr, "Symbol table (%s):\n", sym_type_names[type]);
   for (i = 0; i < tab->count; i++) {
     struct symbol *sym = tab->symbols + i;
-    fprintf(stderr, "  %-10s 0x%08x %c %s\n",
+    bool extra_info = sym->defined && sym->ref.type == SYM_T_MNEMONIC;
+    char extra[60];
+
+    if (extra_info)
+      mnemonic_debug_str(extra, sizeof extra, (struct mnemonic *) sym->val.internal);
+
+    fprintf(stderr, "  %-10s 0x%08x %c %-20s %s%s%s\n",
             sym_type_names[sym->ref.type],
             sym->val.numeric,
             sym->defined ? 'D' : 'U',
-            str_text(sym->ref.name));
+            str_text(sym->ref.name),
+            extra_info ? "(" : "",
+            extra_info ? extra : "",
+            extra_info ? ")" : "");
   }
 }
 

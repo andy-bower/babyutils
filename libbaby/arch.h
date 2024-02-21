@@ -32,6 +32,7 @@ enum operand_type {
 enum mnem_type {
   M_INSTR,
   M_DIRECTIVE,
+  M_MACRO,
 };
 
 enum directive {
@@ -45,6 +46,7 @@ struct mnemonic {
   union {
     const struct instr *ins;
     enum directive dir;
+    struct ast_node *ast;
   };
 };
 

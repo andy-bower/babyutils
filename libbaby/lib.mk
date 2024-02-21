@@ -17,7 +17,7 @@ LIBS+=$(this)
 %.c %.h: %.y
 	$(YACC.y) -o$(<:.y=.c) --defines=$(<:.y=.h) $<
 
-$(d)/asm-ast.o: $(d)/asm-parse.h
+$(d)/asm-ast.o $(d)/asm.o: $(d)/asm-parse.h
 
 $(d).a: $(addprefix $d/,$($(d)_OBJ))
 	$(AR) r $@ $^

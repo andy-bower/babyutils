@@ -1,10 +1,10 @@
-# Baby assembler, simulator and disassembler
+# Baby macro assembler, simulator and disassembler
 
 This is a binutils-style command line tool chain for the Manchester Baby.
 
 These tools were written to support chapter 7 of [Computer Architecture](https://nostarch.com/computerarchitecture) and as such can export files to import into Logisim RAM blocks.
 
-The _babyutils_ assembler `bas` offers some of the features expected of a conventional command line tool, such as labels, allowing development to scale to larger programs when implementations include a larger number of store lines.
+The _babyutils_ assembler `bas` offers some of the features expected of a conventional command line tool, such as labels and macros, allowing development to scale to larger programs when implementations include a larger number of store lines.
 
 Users are encouraged to pair these tools with interesting simulators sporting fancy user interfaces out in the wild. Please raise an issue or submit a pull request if you find a simulator that requires an input format not supported by these tools or an assembly dialect with which `bas` is not yet compatible!
 
@@ -13,16 +13,19 @@ Users are encouraged to pair these tools with interesting simulators sporting fa
 - Labels are accepted in place of addresses.
 - New assembler directive `EJA` standing for Effective Jump Address, which stores a data word in the object file that points to the instruction before the given location, which is either an address or symbol.
 - Logisim image output format.
+- Macros are supported.
 
 ## Roadmap
 
 - [x] Disassembler ('bdump')
 - [ ] Object file conversion tool ('bcopy')
-- [ ] Assembler macros
+- [x] Assembler macros
 - [ ] Assembler expressions
 - [ ] Saving and resuming from saved machine state in simulator
 - [ ] Simulator trace
-- [ ] Multiple sections
+- [ ] Multiple source files
+- [ ] Multiple sections/segments
+- [ ] Automatic data sections
 - [ ] ELF file support
 - [ ] Symbol export
 -

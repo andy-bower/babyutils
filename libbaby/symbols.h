@@ -58,7 +58,7 @@ struct sym_context *sym_root_context(void);
 const char *sym_type_name(enum sym_type type);
 
 /* Look up a symbol by (type, name). Return NULL if not found. */
-extern struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name);
+extern struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local);
 
 /* Look up a symbol by (type, name), Return a new or existing reference
  * depending on whether the symbol was already found. */
@@ -79,5 +79,9 @@ static inline struct symref *sym_add_num(struct sym_context *context, enum sym_t
 
 extern void sym_sort(struct sym_context *context, enum sym_type type);
 extern void sym_print_table(struct sym_context *context, enum sym_type type);
+
+extern struct sym_context *sym_context_create(struct sym_context *parent);
+extern void sym_context_destroy(struct sym_context *context);
+extern int sym_table_create(struct sym_context *context, enum sym_type type);
 
 #endif

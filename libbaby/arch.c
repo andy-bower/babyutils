@@ -144,3 +144,4 @@ int arch_find_opcode(word_t opcode, struct mnemonic **results, size_t max_result
 
   return i;
 }
+
