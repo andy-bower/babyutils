@@ -21,17 +21,18 @@
 #include "symbols.h"
 #include "asm.h"
 
-void asm_log_abstract(struct asm_abstract *abstract) {
+void asm_log_abstract(struct strtab *strtab,
+                      struct asm_abstract *abstract) {
     fprintf(stderr, "  %-3s %-5s %-5s %4d: 0x%08x %-10s %-4s 0x%08x %-10s %s:%d\n",
             abstract->flags & HAS_ORG ? "ORG" : "",
             abstract->flags & HAS_LABEL ? "LABEL" : "",
             abstract->flags & HAS_INSTR ? "INSTR" : "",
             abstract->n_operands,
             abstract->org,
-            abstract->flags & HAS_LABEL ? abstract->label.name : "",
-            abstract->flags & HAS_INSTR ? abstract->instr.name : "",
+            abstract->flags & HAS_LABEL ? strtab_get(strtab, abstract->label.name) : "",
+            abstract->flags & HAS_INSTR ? strtab_get(strtab, abstract->instr.name) : "",
             abstract->opr_effective,
-            abstract->opr_type == OPR_SYM ? abstract->operand_sym.name : "",
+            abstract->opr_type == OPR_SYM ? strtab_get(strtab, abstract->operand_sym.name) : "",
             abstract->source ? abstract->source->leaf : "",
             abstract->line);
 }

@@ -19,13 +19,17 @@
 
 #include "butils.h"
 #include "arch.h"
+#include "strtab.h"
 #include "symbols.h"
+
+/* TODO: stop sorting the symbols by name now that we use indexes
+ * into a string table as the name reference. In any case this
+ * was only a temporary solution pending more appropriate
+ * data structure. */
 
 const char *sym_type_names[SYM_T_MAX] = {
   [ SYM_T_MNEMONIC] = "MNEMONIC",
   [ SYM_T_LABEL] = "LABEL",
-  [ SYM_T_RAW] = "RAW",
-  [ SYM_T_MACRO] = "MACRO",
 };
 
 struct sym_table {
@@ -34,32 +38,33 @@ struct sym_table {
   size_t capacity;
   bool case_insensitive;
   bool sorted;
-  bool pointers_valid;
-
-  /* hash table used to deduplicate entries but not much use otherwise */
-  struct hsearch_data htab;
 };
 
-struct sym_context *sym_global_context = NULL;
+static struct sym_context *sym_global_context = NULL;
+static struct strtab *sym_strtab;
+
+static const char *str_text(str_idx_t idx) {
+  return strtab_get(sym_strtab, idx);
+}
 
 static int symsort(const void *a, const void *b) {
   const struct symbol *sa = (const struct symbol *) a;
   const struct symbol *sb = (const struct symbol *) b;
-  return strcmp(sa->ref.name, sb->ref.name);
+  return strcmp(str_text(sa->ref.name), str_text(sb->ref.name));
 }
 
 static int symsearch(const void *key, const void *a) {
-  return symsort(&(struct symbol) { .ref.name = key }, a);
+  return symsort(&(struct symbol) { .ref.name = (str_idx_t) key }, a);
 }
 
 static int symcasesort(const void *a, const void *b) {
   const struct symbol *sa = (const struct symbol *) a;
   const struct symbol *sb = (const struct symbol *) b;
-  return strcasecmp(sa->ref.name, sb->ref.name);
+  return strcasecmp(str_text(sa->ref.name), str_text(sb->ref.name));
 }
 
 static int symcasesearch(const void *key, const void *a) {
-  return symcasesort(&(struct symbol) { .ref.name = key }, a);
+  return symcasesort(&(struct symbol) { .ref.name = (str_idx_t) key }, a);
 }
 
 void sym_sort(struct sym_context *context, enum sym_type type) {
@@ -70,7 +75,6 @@ void sym_sort(struct sym_context *context, enum sym_type type) {
   qsort(tab->symbols, tab->count, sizeof tab->symbols[0],
         tab->case_insensitive ? symcasesort : symsort);
   tab->sorted = true;
-  tab->pointers_valid = false;
 }
 
 const char *sym_type_name(enum sym_type type) {
@@ -79,19 +83,18 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, const char *name) {
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name) {
   struct sym_table *tab;
   struct symbol *sym = NULL;
 
   assert(type < SYM_T_MAX);
-  assert(name);
 
   while (context && !sym) {
     tab = context->tables[type];
     if (!tab->sorted)
       sym_sort(context, type);
 
-    sym = bsearch(name, tab->symbols, tab->count, sizeof tab->symbols[0],
+    sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
                   tab->case_insensitive ? symcasesearch : symsearch);
     context = context->parent;
   }
@@ -99,7 +102,7 @@ struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, const
   return sym; 
 }
 
-struct symref *sym_getref(struct sym_context *context, enum sym_type type, const char *name) {
+struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_idx_t name) {
   struct sym_table *tab;
   struct symbol *sym;
 
@@ -119,7 +122,7 @@ struct symref *sym_getref(struct sym_context *context, enum sym_type type, const
   }
   sym = &tab->symbols[tab->count++];
   sym->ref.type = type;
-  sym->ref.name = strdup(name);
+  sym->ref.name = name;
   sym->defined = false;
   tab->sorted = false;
 
@@ -132,7 +135,7 @@ union symval sym_getval(struct sym_context *context, struct symref *ref) {
   sym = sym_lookup(context, ref->type, ref->name);
 
   if (sym == NULL || sym->ref.type != ref->type) {
-    fprintf(stderr, "error: symbol '%s' not found\n", ref->name);
+    fprintf(stderr, "error: symbol '%s' not found\n", strtab_get(sym_strtab, ref->name));
     return (union symval) { .numeric = 0 };
   }
 
@@ -160,9 +163,6 @@ int sym_table_create(struct sym_context *context, enum sym_type type) {
   if (type == SYM_T_MNEMONIC)
     table->case_insensitive = true;
 
-  if (hcreate_r(50, &table->htab) == 0)
-    return errno;
-
   context->tables[type] = table;
 
   return 0;
@@ -170,13 +170,9 @@ int sym_table_create(struct sym_context *context, enum sym_type type) {
 
 void sym_table_destroy(struct sym_context *context, enum sym_type type) {
   struct sym_table *table = context->tables[type];
-  int j;
 
   assert(table);
-  hdestroy_r(&table->htab);
-  for (j = 0; j < table->count; j++) {
-    free((void *)table->symbols[j].ref.name);
-  }
+  free(table->symbols);
   free(table);
   context->tables[type] = NULL;
 }
@@ -199,11 +195,12 @@ void sym_context_destroy(struct sym_context *context) {
   free(context);
 }
 
-void sym_init(void) {
+void sym_init(struct strtab *strtab) {
   int rc;
   int i;
 
   sym_global_context = sym_context_create(NULL);
+  sym_strtab = strtab;
   if (sym_global_context == NULL) {
     perror("creating global context");
     exit(1);
@@ -228,7 +225,7 @@ struct sym_context *sym_root_context(void) {
   return sym_global_context;
 }
 
-struct symref *sym_add(struct sym_context *context, enum sym_type type, const char *name, bool defined, union symval value) {
+struct symref *sym_add(struct sym_context *context, enum sym_type type, str_idx_t name, bool defined, union symval value) {
   struct symref *symref;
 
   assert(type < SYM_T_MAX);
@@ -254,7 +251,7 @@ void sym_print_table(struct sym_context *context, enum sym_type type) {
             sym_type_names[sym->ref.type],
             sym->val.numeric,
             sym->defined ? 'D' : 'U',
-            sym->ref.name);
+            str_text(sym->ref.name));
   }
 }
 

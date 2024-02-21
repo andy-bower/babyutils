@@ -28,6 +28,8 @@
 
 #define DEFAULT_INPUT_FORMAT READER_BITS BITS_SUFFIX_SNP
 
+struct strtab *strtab_src;
+
 /* Abstract disassembly */
 struct dis_abstract {
   struct asm_abstract alts[2];
@@ -71,7 +73,7 @@ int render_instr(char *buf, size_t max, size_t *ptr, struct asm_abstract *a) {
   int ret;
   int i;
 
-  ret = snprintf(buf + *ptr, max - *ptr, "%s", a->instr.name);
+  ret = snprintf(buf + *ptr, max - *ptr, "%s", SSTR(a->instr.name));
   if (ret < 0) {
     perror("snprintf");
     return errno;
@@ -134,7 +136,7 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 
     if (addr == 1) {
       d->alts[0].flags |= HAS_LABEL | HAS_ORG;
-      d->alts[0].label = *sym_add_num(context, SYM_T_LABEL, "_start", addr);
+      d->alts[0].label = *sym_add_num(context, SYM_T_LABEL, strtab_put(strtab_src, "_start"), addr);
     } else if (auto_label) {
       d->alts[0].flags |= HAS_ORG;
     }
@@ -148,14 +150,14 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       case DATA:
         a->opr_type = OPR_NUM;
         a->n_operands = 1;
-        a->instr = *sym_getref(context, SYM_T_MNEMONIC, "NUM");
+        a->instr = *sym_getref(context, SYM_T_MNEMONIC, SSTRP("NUM"));
         a->opr_effective = d->w;
         d->n_alts++;
         break;
       case INSTR:
         a->opr_type = OPR_NUM;
         a->n_operands = m->ins->operands;
-        a->instr = *sym_getref(context, SYM_T_MNEMONIC, m->name);
+        a->instr = *sym_getref(context, SYM_T_MNEMONIC, SSTRP(m->name));
         a->opr_effective = d->parts.operand;
         d->n_alts++;
         break;
@@ -177,10 +179,10 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
     size_t max = sizeof buf1;
 
     if (verbose)
-      asm_log_abstract(&ad[addr].alts[0]);
+      asm_log_abstract(strtab_src, &ad[addr].alts[0]);
 
     if (a->flags & HAS_LABEL)
-      printf("%s:\n", a->label.name);
+      printf("%s:\n", SSTR(a->label.name));
 
     if (a->flags & HAS_ORG)
       printf("%02d:\n", addr);
@@ -203,14 +205,16 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 }
 
 static void init(void) {
-  sym_init();
-  arch_init();
+  strtab_src = strtab_create();
+  sym_init(strtab_src);
+  arch_init(strtab_src);
 }
 
 static void finit(void) {
   loaders_finit();
-  arch_init();
-  sym_init();
+  arch_finit();
+  sym_finit();
+  strtab_destroy(strtab_src);
 }
 
 int main(int argc, char *argv[]) {
@@ -274,7 +278,7 @@ int main(int argc, char *argv[]) {
 
   rc = loader->stat(loader, &exe, &segment);
   if (rc != 0)
-    return rc;
+    goto finish;
 
   mapped_section.size = segment.length;
   mapped_section.data = calloc(segment.length, sizeof *mapped_section.data);

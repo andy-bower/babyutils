@@ -82,7 +82,7 @@ static int instrindexsearch(const void *opkey, const void *b) {
     return 0 - ib->order;
 }
 
-void arch_init(void) {
+void arch_init(struct strtab *strtab) {
   int i;
   int sub_order = 0;
 
@@ -115,7 +115,7 @@ void arch_init(void) {
   /* Register mnemonics as symbols */
   for (i = 0; i < babysz; i++) {
     struct mnemonic *m = baby_mnemonics + i;
-    struct symref *ref = sym_getref(sym_root_context(), SYM_T_MNEMONIC, m->name);
+    struct symref *ref = sym_getref(sym_root_context(), SYM_T_MNEMONIC, strtab_put(strtab, m->name));
     sym_setval(sym_root_context(), ref, true, (union symval) { .internal = m });
   }
 }

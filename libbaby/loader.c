@@ -144,7 +144,7 @@ static int bits_read(const struct loader *loader, struct object_file *file, stru
   for (lineno = 1; !feof(file->stream) && !ferror(file->stream); lineno++) {
     linelen = getline(&line,  &linesz, file->stream);
     if (linelen == -1) {
-      rc = errno;
+      rc = feof(file->stream) ? 0 : errno;
       break;
     }
 

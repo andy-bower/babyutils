@@ -11,6 +11,7 @@
 
 #include "arch.h"
 #include "asm.h"
+#include "strtab.h"
 
 /* yacc-generated definitions */
 #include "asm-parse.h"
@@ -50,6 +51,10 @@ static void update_loc(YYLTYPE *yylloc, YYSTYPE *yylval) {
   yylloc->end.offset--;
 }
 
+static str_idx_t strput(const char *text) {
+  return strtab_put(strtab_src, text);
+}
+
 #define YY_USER_ACTION update_loc(yylloc, yylval);
 %}
 
@@ -71,7 +76,7 @@ static void update_loc(YYLTYPE *yylloc, YYSTYPE *yylval) {
 (?i:MACRO)              { return MACRO; }
 (?i:ENDM)               { return ENDM; }
 
-[_.$a-zA-Z][_.$a-zA-Z0-9]*  { yylval->NAME = strdup(yytext); return NAME; }
+[_.$a-zA-Z][_.$a-zA-Z0-9]*  { yylval->NAME = strput(yytext); return NAME; }
 :                       { return COLON; }
 ,                       { return COMMA; }
 

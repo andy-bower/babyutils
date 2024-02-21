@@ -37,4 +37,6 @@ int put_word(struct section *section, word_t word, struct asm_abstract *abs) {
   return 0;
 }
 
-
+void section_free (struct section *section) {
+  free(section->data);
+}

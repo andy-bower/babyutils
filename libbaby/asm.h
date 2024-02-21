@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "strtab.h"
 #include "symbols.h"
 
 /* Constants */
@@ -16,6 +17,9 @@
 #define HAS_ORG   01
 #define HAS_LABEL 02
 #define HAS_INSTR 04
+
+#define SSTR(x) strtab_get(strtab_src, x)
+#define SSTRP(x) strtab_put(strtab_src, x)
 
 /* Types */
 
@@ -39,8 +43,10 @@ struct asm_abstract {
   int line;
 };
 
+extern struct strtab *strtab_src;
+
 /* Public functions */
 
-void asm_log_abstract(struct asm_abstract *abstract);
+void asm_log_abstract(struct strtab *strtab, struct asm_abstract *abstract);
 
 #endif

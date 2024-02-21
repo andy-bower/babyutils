@@ -24,5 +24,5 @@ struct section {
 };
 
 extern int put_word(struct section *section, word_t word, struct asm_abstract *abs);
-
+extern void section_free(struct section *section);
 #endif

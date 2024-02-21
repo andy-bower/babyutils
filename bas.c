@@ -31,6 +31,7 @@
 #define DEFAULT_OUTPUT_FORMAT WRITER_BITS BITS_SUFFIX_SNP
 
 extern FILE *yyin;
+struct strtab *strtab_src;
 
 struct source {
   struct source_public public;
@@ -45,13 +46,15 @@ struct source {
 int verbose;
 
 static void init(void) {
-  sym_init();
-  arch_init();
+  strtab_src = strtab_create();
+  sym_init(strtab_src);
+  arch_init(strtab_src);
 }
 
 static void finit(void) {
   arch_finit();
   sym_finit();
+  strtab_destroy(strtab_src);
 }
 
 void yyerror(YYLTYPE *yylloc, struct ast_node **root, char const *error) {
@@ -100,7 +103,7 @@ int assemble_one(struct section *section,
   }
 
   if (verbose && !first_pass)
-    asm_log_abstract(abstract);
+    asm_log_abstract(strtab_src, abstract);
 
   if (abstract->flags & HAS_ORG) {
     section->cursor = abstract->org;
@@ -111,9 +114,9 @@ int assemble_one(struct section *section,
   }
 
   if (!first_pass && abstract->flags & HAS_INSTR) {
-    const struct mnemonic *m = arch_find_instr(abstract->instr.name);
+    const struct mnemonic *m = arch_find_instr(SSTR(abstract->instr.name));
     if (m == NULL) {
-      fprintf(stderr, "no such mnemonic %s\n", abstract->instr.name);
+      fprintf(stderr, "no such mnemonic %s\n", SSTR(abstract->instr.name));
       return EINVAL;
     }
 
@@ -242,7 +245,7 @@ int parse_stmts(struct sym_context *context,
       break;
     case AST_INSTR:
       a.flags |= HAS_INSTR;
-      assert(stmt->v.tuple[0]->t == AST_NAME);
+      assert(stmt->v.tuple[0]->t == AST_SYMBOL);
       a.instr = stmt->v.tuple[0]->v.nameref;
 
       /* Iterate over tuple-based operand list */
@@ -256,7 +259,7 @@ int parse_stmts(struct sym_context *context,
         }
         switch (operand->t) {
         case AST_LABEL:
-        case AST_NAME:
+        case AST_SYMBOL:
           a.opr_type = OPR_SYM;
           a.operand_sym = operand->v.nameref;
           break;
@@ -506,6 +509,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < num_sources; i++) {
       struct source *source = sources + i;
       if (source->stream != NULL) {
+        free(source->index);
         free(source->public.path);
         free(source->public.leaf);
         if (!source->noclose)
@@ -515,7 +519,7 @@ int main(int argc, char *argv[]) {
     free(sources);
   }
   asm_buf_free(&abstract);
-
+  section_free(&section);
   finit();
 
   return rc == 0 ? 0 : 1;

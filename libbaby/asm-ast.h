@@ -26,6 +26,7 @@ enum ast_node_e {
   AST_NIL,
   AST_NUMBER,
   AST_NAME,
+  AST_SYMBOL,
   AST_LIST,
   AST_MACRO,
 };
@@ -35,6 +36,7 @@ struct ast_node;
 union ast_node_u {
   struct ast_node *tuple[2];
   struct symref nameref;
+  str_idx_t str;
   word_t number;
   struct {
     size_t length;
@@ -46,8 +48,12 @@ struct ast_node {
   enum ast_node_e t;
   union ast_node_u v;
   struct ast_debug debug;
+  bool heap:1; /* node is heap allocated */
 };
 
 extern void ast_plot_tree(FILE *stream, struct ast_node *node);
 extern void ast_free_tree(struct ast_node *node);
 size_t ast_count_list(struct ast_node *node);
+
+extern struct ast_node ast_nil_node;
+#define AST_NIL_NODE (&ast_nil_node)

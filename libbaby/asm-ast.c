@@ -27,6 +27,10 @@
 #include "asm-ast.h"
 #include "asm-parse.h"
 
+struct ast_node ast_nil_node = {
+  .t = AST_NIL
+};
+
 void ast_plot_tree(FILE *out, struct ast_node *node) {
   int i;
 
@@ -51,8 +55,11 @@ void ast_plot_tree(FILE *out, struct ast_node *node) {
     break;
   case AST_LABEL:
     fprintf(out, "Label ");
+  case AST_SYMBOL:
+    fprintf(out, "%s:%s", sym_type_name(node->v.nameref.type), SSTR(node->v.nameref.name));
+    break;
   case AST_NAME:
-    fprintf(out, "%s:%s", sym_type_name(node->v.nameref.type), node->v.nameref.name);
+    fprintf(out, "%s", SSTR(node->v.str));
     break;
   case AST_LIST:
     fprintf(out, "[");
@@ -81,16 +88,21 @@ void ast_free_tree(struct ast_node *node) {
   case AST_LIST:
     for (i = 0; i < node->v.list.length; i++)
       ast_free_tree(&node->v.list.nodes[i]);
+    free(node->v.list.nodes);
     break;
   case AST_NIL:
   case AST_ORG:
   case AST_NUMBER:
   case AST_LABEL:
   case AST_NAME:
+  case AST_SYMBOL:
     break;
   default:
     fprintf(stderr, "ast_free_tree: <UNKNOWN-NODE-TYPE>");
   }
+
+  if (node->heap)
+    free(node);
 };
 
 size_t ast_count_list(struct ast_node *node) {
