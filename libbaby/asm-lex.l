@@ -79,6 +79,8 @@ static str_idx_t strput(const char *text) {
 [_.$a-zA-Z][_.$a-zA-Z0-9]*  { yylval->NAME = strput(yytext); return NAME; }
 :                       { return COLON; }
 ,                       { return COMMA; }
+-                       { return MINUS; }
+\+                      { return PLUS; }
 
 --                      { BEGIN(comment); }
 ;                       { BEGIN(comment); }

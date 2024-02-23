@@ -118,6 +118,10 @@ static struct ast_node *mk_instr(struct ast_node *mnemonic, struct ast_node *ope
   return mk_node((struct ast_node) { .t = AST_INSTR, .v.tuple = { mnemonic, operands } });
 }
 
+static struct ast_node *mk_semantic(enum ast_node_e type, struct ast_node *l, struct ast_node *r) {
+  return mk_node((struct ast_node) { .t = type, .v.tuple = { l, r } });
+}
+
 static struct ast_node *mk_macro(str_idx_t macro,
                                  struct ast_node *arguments,
                                  struct ast_node *statements) {
@@ -185,11 +189,15 @@ typedef struct {
 %define api.value.type union
 %token <char *> HEX OCTAL DECIMAL BINARY COLON EOL COMMA
 %token <char *> MACRO ENDM CONTINUATION
+%token <char *> MINUS PLUS
 %token <str_idx_t> NAME
 %nterm <struct ast_node *> file stmts stmt location instr
 %nterm <struct ast_node *> number number_not_octal
 %nterm <struct ast_node *> mnemonic operands expr eol
 %nterm <struct ast_node *> macro arguments
+
+%left MINUS PLUS
+
 %%
 file: eol stmts { *root = mk_list($2); }
     | stmts { *root = mk_list($1); };
@@ -222,8 +230,10 @@ mnemonic: NAME { $$ = mk_symbol(SYM_T_MNEMONIC, $1); }
 operands: expr COMMA operands { $$ = mk_tuple($1, $3); }
         | expr { $$ = mk_tuple($1, AST_NIL_NODE); };
 
-expr: number { $$ = $1; }
-    | NAME { $$ = mk_symbol(SYM_T_LABEL, $1); };
+expr: expr MINUS expr { $$ = mk_semantic(AST_MINUS, $1, $3); }
+    | expr PLUS expr { $$ = mk_semantic(AST_PLUS, $1, $3); }
+    | NAME { $$ = mk_symbol(SYM_T_LABEL, $1); }
+    | number { $$ = $1; };
 
 number: HEX { $$ = mk_number(16, $1); }
       | OCTAL { $$ = mk_number(10, $1); }

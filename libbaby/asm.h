@@ -35,9 +35,7 @@ struct asm_abstract {
   addr_t org;
   struct symref label;
   struct symref instr;
-  enum operand_type opr_type;
-  struct symref operand_sym;
-  num_t opr_num;
+  struct ast_node *operands;
   num_t opr_effective;
   struct source_public *source;
   int line;

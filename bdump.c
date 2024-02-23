@@ -82,7 +82,7 @@ int render_instr(char *buf, size_t max, size_t *ptr, struct asm_abstract *a) {
   }
 
   for (i = 0; i < a->n_operands && i < 1; i++) {
-    ret = snprintf(buf + *ptr, max - *ptr, " %" PRId32, a->opr_num);
+    ret = snprintf(buf + *ptr, max - *ptr, " %" PRId32, a->opr_effective);
     if (ret < 0) {
       perror("snprintf");
       return errno;
@@ -148,14 +148,12 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
 
       switch (type[i]) {
       case DATA:
-        a->opr_type = OPR_NUM;
         a->n_operands = 1;
         a->instr = *sym_getref(context, SYM_T_MNEMONIC, SSTRP("NUM"));
         a->opr_effective = d->w;
         d->n_alts++;
         break;
       case INSTR:
-        a->opr_type = OPR_NUM;
         a->n_operands = m->ins->operands;
         a->instr = *sym_getref(context, SYM_T_MNEMONIC, SSTRP(m->name));
         a->opr_effective = d->parts.operand;
@@ -164,7 +162,6 @@ int disassemble_section(struct segment *segment, struct vm *vmem) {
       default:
         break;
       }
-      a->opr_num = a->opr_effective;
       a->flags |= HAS_INSTR;
     }
   }

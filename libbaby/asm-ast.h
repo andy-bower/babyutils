@@ -29,6 +29,8 @@ enum ast_node_e {
   AST_SYMBOL,
   AST_LIST,
   AST_MACRO,
+  AST_MINUS,
+  AST_PLUS,
 };
 
 struct ast_node;

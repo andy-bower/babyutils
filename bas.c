@@ -86,21 +86,64 @@ static void asm_buf_free(struct asm_buf *buf) {
   memset(buf, '\0', sizeof *buf);
 }
 
+int eval_expr(num_t *result, struct sym_context *context, struct ast_node *node) {
+  struct symbol *sym;
+  num_t a, b;
+  int rc;
+
+  switch (node->t) {
+  case AST_LABEL:
+    sym = sym_lookup(context, SYM_T_LABEL, node->v.nameref.name, false);
+    if (!sym) {
+      fprintf(stderr, "label undefined: %s\n", SSTR(node->v.nameref.name));
+      return EHANDLED;
+    }
+    *result = sym->val.numeric;
+    break;
+  case AST_NUMBER:
+    *result = node->v.number;
+    break;
+  case AST_MINUS:
+  case AST_PLUS:
+    rc = eval_expr(&a, context, node->v.tuple[0]);
+    if (rc != 0)
+      return rc;
+    rc = eval_expr(&b, context, node->v.tuple[1]);
+    if (rc != 0)
+      return rc;
+    *result = node->t == AST_MINUS ? a - b : a + b;
+  default:
+    fprintf(stderr, "eval: invalid ast node\n");
+    rc = EINVAL;
+  }
+  return 0;
+}
 
 int assemble_one(struct section *section,
                  struct asm_abstract *abstract, bool first_pass) {
-  struct symbol *sym;
   int rc = 0;
 
-  if (!first_pass && abstract->opr_type == OPR_SYM) {
-    sym = sym_lookup(abstract->context, SYM_T_LABEL, abstract->operand_sym.name, false);
-    if (!sym) {
-      fprintf(stderr, "label undefined: %s\n", SSTR(abstract->operand_sym.name));
-      return EHANDLED;
+  /* Resolve operands on second pass */
+  if (!first_pass) {
+    num_t *evaluated_operands = &abstract->opr_effective;
+    const int max_operands = 1;
+    struct ast_node *node;
+    int op_i = 0;
+
+    for (node = abstract->operands; node->t != AST_NIL; node = node->v.tuple[1]) {
+      assert(node->t == AST_TUPLE);
+
+      if (op_i == max_operands) {
+        fprintf(stderr, "too many operands\n");
+        return EHANDLED;
+      }
+
+      rc = eval_expr(&evaluated_operands[op_i++], abstract->context, node->v.tuple[0]);
+      if (rc != 0)
+        return rc;
     }
-    abstract->opr_effective = sym->val.numeric;
-  } else {
-    abstract->opr_effective = abstract->opr_num;
+
+    assert(op_i == abstract->n_operands);
   }
 
   if (verbose && !first_pass)
@@ -198,7 +241,6 @@ int parse_stmts(struct sym_context *context,
                 struct ast_node *list,
                 struct source *source) {
   struct ast_node *stmt;
-  struct ast_node *node;
   struct asm_abstract a;
   int stmt_i;
 
@@ -319,30 +361,9 @@ int parse_stmts(struct sym_context *context,
       a.flags |= HAS_INSTR;
       a.instr = stmt->v.tuple[0]->v.nameref;
 
-      /* Iterate over tuple-based operand list */
-      a.n_operands = 0;
-      for (node = stmt->v.tuple[1]; node->t == AST_TUPLE; node = node->v.tuple[1]) {
-        struct ast_node *operand = node->v.tuple[0];
+      a.n_operands = ast_count_list(stmt->v.tuple[1]);
+      a.operands = stmt->v.tuple[1];
 
-        if (++a.n_operands > 1) {
-          fprintf(stderr, "assembly error: only one operand permitted\n");
-          return EINVAL;
-        }
-        switch (operand->t) {
-        case AST_LABEL:
-        case AST_SYMBOL:
-          a.opr_type = OPR_SYM;
-          a.operand_sym = operand->v.nameref;
-          break;
-        case AST_NUMBER:
-          a.opr_type = OPR_NUM;
-          a.opr_num = operand->v.number;
-          break;
-        default:
-          assert(!"invalid operand child node to instruction");
-        }
-      }
-      assert(node->t == AST_NIL);
       asm_buf_push(buf, &a);
       a = new_a;
       break;

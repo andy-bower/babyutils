@@ -27,7 +27,7 @@ tmp:
 01:
 start:
   mld 16
-  mld 17
+  mld 17 - 1
   madd 18
   sto 12
   hlt
