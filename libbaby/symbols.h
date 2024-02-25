@@ -32,6 +32,12 @@ enum sym_subtype {
   SYM_ST_AST,
 };
 
+enum sym_lookup_scope {
+  SYM_LU_SCOPE_DEFAULT,
+  SYM_LU_SCOPE_LOCAL,
+  SYM_LU_SCOPE_EXCLUDE_SPECIFIED,
+};
+
 struct symref {
   enum sym_type type;
   str_idx_t name;
@@ -69,10 +75,11 @@ struct sym_context *sym_root_context(void);
 const char *sym_type_name(enum sym_type type);
 
 extern struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_type type, str_idx_t name,
-                                              bool local, struct sym_context **found_context);
+                                              enum sym_lookup_scope scope, struct sym_context **found_context,
+                                              struct sym_context *specific_contexst);
 
  /* Look up a symbol by (type, name). Return NULL if not found. */
-extern struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local);
+extern struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, enum sym_lookup_scope scope);
 
 /* Look up a symbol by (type, name), Return a new or existing reference
  * depending on whether the symbol was already found. */

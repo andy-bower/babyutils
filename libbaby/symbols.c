@@ -92,8 +92,12 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_type type, str_idx_t name, bool local,
-                                       struct sym_context **found_context) {
+struct symbol *sym_lookup_with_context(struct sym_context *context,
+                                       enum sym_type type,
+                                       str_idx_t name,
+                                       enum sym_lookup_scope scope,
+                                       struct sym_context **found_context,
+                                       struct sym_context *specific_context) {
   struct sym_table *tab;
   struct symbol *sym = NULL;
 
@@ -101,7 +105,8 @@ struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_typ
 
   while (context && !sym) {
     tab = context->tables[type];
-    if (tab) {
+    if ((scope != SYM_LU_SCOPE_EXCLUDE_SPECIFIED || context != specific_context) &&
+        tab) {
       if (!tab->sorted)
         sym_sort(context, type);
 
@@ -109,7 +114,7 @@ struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_typ
                     tab->case_insensitive ? symcasesearch : symsearch);
     }
     if (!sym)
-      context = local ? NULL : context->parent;
+      context = scope == SYM_LU_SCOPE_LOCAL ? NULL : context->parent;
   }
 
   *found_context = context;
@@ -117,10 +122,10 @@ struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_typ
   return sym; 
 }
 
-struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local) {
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, enum sym_lookup_scope scope) {
   struct sym_context *found_context;
 
-  return sym_lookup_with_context(context, type, name, local, &found_context);
+  return sym_lookup_with_context(context, type, name, scope, &found_context, NULL);
 }
 
 struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_idx_t name) {
