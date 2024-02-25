@@ -80,7 +80,7 @@ void ast_plot_tree(FILE *out, struct ast_node *node) {
     fprintf(out, "]");
     break;
   default:
-    fprintf(out, "<UNKNOWN-NODE-TYPE>");
+    fprintf(out, "<UNKNOWN-NODE-TYPE%d>", node->t);
   }
 };
 
@@ -114,6 +114,49 @@ void ast_free_tree(struct ast_node *node) {
 
   if (node->heap)
     free(node);
+};
+
+struct ast_node *ast_copy_tree(struct ast_node *node, struct ast_node *copy) {
+  bool prealloced = copy != NULL;
+  bool heap = !prealloced || copy->heap;
+  int i;
+
+  assert(node);
+
+  if (node->t == AST_NIL)
+    return AST_NIL_NODE;
+
+  if (!prealloced) {
+    copy = (struct ast_node *) calloc(1, sizeof *copy);
+    if (copy == NULL) {
+      perror("ast_copy_tree");
+      exit(1);
+    }
+  }
+
+  switch (node->t) {
+  case AST_INSTR:
+  case AST_MACRO:
+  case AST_MINUS:
+  case AST_PLUS:
+  case AST_TUPLE:
+    copy->t = node->t;
+    copy->v.tuple[0] = ast_copy_tree(node->v.tuple[0], NULL);
+    copy->v.tuple[1] = ast_copy_tree(node->v.tuple[1], NULL);
+    break;
+  case AST_LIST:
+    copy->t = node->t;
+    copy->v.list.nodes = calloc(node->v.list.length, sizeof(struct ast_node));
+    copy->v.list.length = node->v.list.length;
+    for (i = 0; i < node->v.list.length; i++)
+      ast_copy_tree(node->v.list.nodes + i, copy->v.list.nodes + i);
+    break;
+  default:
+    *copy = *node;
+  }
+
+  copy->heap = heap;
+  return copy;
 };
 
 size_t ast_count_list(struct ast_node *node) {

@@ -32,6 +32,14 @@
 
 extern FILE *yyin;
 
+enum {
+  VSYM_ORG,
+};
+
+static const char *vsyms[] = {
+  [ VSYM_ORG ] = "$",
+};
+
 struct source {
   struct source_public public;
   FILE *stream;
@@ -112,9 +120,10 @@ static enum eval_result eval_expr(struct sym_context *context, struct ast_node *
   switch (node->t) {
   case AST_SYMBOL:
   case AST_LABEL:
-    sym = sym_lookup_with_context(context, SYM_T_LABEL, node->v.nameref.name, false, &sym_context);
+    sym = sym_lookup_with_context(context, SYM_T_LABEL, node->v.nameref.name,
+                                  SYM_LU_SCOPE_EXCLUDE_SPECIFIED_UNDEF, &sym_context,
+                                  context);
     if (sym && sym->subtype == SYM_ST_AST && !allow_partial) {
-      /* Try to resolve symbol in its own context if possible */
       rc_a = eval_expr(sym_context, sym->val.ast, allow_partial);
       if (rc_a == EVAL_ERROR)
         return rc_a;
@@ -140,9 +149,9 @@ static enum eval_result eval_expr(struct sym_context *context, struct ast_node *
       a = node->v.tuple[0]->v.number;
       b = node->v.tuple[1]->v.number;
       a = node->t == AST_MINUS ? a - b : a + b;
+      node->t = node->v.tuple[0]->t;
       ast_free_tree(node->v.tuple[0]);
       ast_free_tree(node->v.tuple[1]);
-      node->t = node->v.tuple[0]->v.number = node->v.tuple[0]->t;
       node->v.number = a;
       return EVAL_OK;
     } else if (allow_partial && (rc_a == EVAL_PARTIAL || rc_b == EVAL_PARTIAL)) {
@@ -156,10 +165,18 @@ static enum eval_result eval_expr(struct sym_context *context, struct ast_node *
   }
 }
 
-int assemble_one(struct section *section,
+int assemble_one(struct sym_context *assembler_context,
+                 struct section *section,
                  struct asm_abstract *abstract, bool first_pass) {
   int rc = 0;
   enum eval_result ev;
+
+  if (abstract->flags & HAS_ORG) {
+    section->cursor = abstract->org;
+  }
+
+  if (assembler_context)
+    sym_add_num(assembler_context, SYM_T_LABEL, SSTRP(vsyms[VSYM_ORG]), section->cursor);
 
   /* Resolve operands on second pass */
   if (!first_pass && abstract->flags & HAS_INSTR) {
@@ -177,7 +194,8 @@ int assemble_one(struct section *section,
         return EHANDLED;
       }
 
-      ev = eval_expr(abstract->context, val, false);
+      assembler_context->parent = abstract->context;
+      ev = eval_expr(assembler_context, val, false);
       if (ev != EVAL_OK)
         return EHANDLED;
       assert(val->t == AST_NUMBER);
@@ -189,10 +207,6 @@ int assemble_one(struct section *section,
 
   if (verbose && !first_pass)
     asm_log_abstract(strtab_src, abstract);
-
-  if (abstract->flags & HAS_ORG) {
-    section->cursor = abstract->org;
-  }
 
   if (first_pass && abstract->flags & HAS_INSTR) {
     put_word(section, 0, NULL);
@@ -229,7 +243,7 @@ int assemble_one(struct section *section,
   return rc;
 }
 
-void pass_one(struct section *section, struct asm_buf *abstract) {
+void pass_one(struct sym_context *assembler_context, struct section *section, struct asm_buf *abstract) {
   int i;
   addr_t saved_cursor = section->cursor;
 
@@ -237,7 +251,7 @@ void pass_one(struct section *section, struct asm_buf *abstract) {
     struct asm_abstract *a = &abstract->records[i];
     if (a->flags & HAS_LABEL)
       sym_add_num(a->context, SYM_T_LABEL, a->label.name, section->cursor);
-    assemble_one(section, a, true);
+    assemble_one(assembler_context, section, a, true);
   }
 
   section->cursor = saved_cursor;
@@ -245,15 +259,23 @@ void pass_one(struct section *section, struct asm_buf *abstract) {
 
 int assemble(struct section *section,
              struct asm_buf *abstract) {
+  struct sym_context *assembler_context;
   int rc = 0;
   int i;
+
+  /* Create a dynamic symbol context to layer onto the real context
+   * for current scope to add virtual symbols like current location. */
+  assembler_context = sym_context_create(NULL);
+  rc = sym_table_create(assembler_context, SYM_T_LABEL);
 
   if (verbose)
     fprintf(stderr, "Abstract assembly source:\n");
   for (i = 0; i < abstract->ptr; i++) {
     if (rc == 0)
-      rc = assemble_one(section, &abstract->records[i], false);
+      rc = assemble_one(assembler_context, section, &abstract->records[i], false);
   }
+
+  sym_context_destroy(assembler_context);
 
   return rc;
 }
@@ -375,6 +397,7 @@ int parse_stmts(struct sym_context *context,
                  formal_args->t == AST_TUPLE;
                  actual_args = actual_args->v.tuple[1],
                  formal_args = formal_args->v.tuple[1]) {
+              struct ast_node *copy;
               enum eval_result ev;
               union symval sv;
 
@@ -385,12 +408,13 @@ int parse_stmts(struct sym_context *context,
                 fprintf(stderr, "insuficient arugments to macro %s\n", m->name);
                 return EINVAL;
               }
-              ev = eval_expr(new_context, actual_args->v.tuple[0], true);
+              copy = ast_copy_tree(actual_args->v.tuple[0], NULL);
+              ev = eval_expr(new_context, copy, true);
               if (ev == EVAL_ERROR)
                 return EINVAL;
               sym_add(new_context, SYM_T_LABEL,
-                          formal_args->v.tuple[0]->v.str,
-                          expr_to_symval(&sv, actual_args->v.tuple[0]), sv);
+                      formal_args->v.tuple[0]->v.str,
+                      expr_to_symval(&sv, copy), sv);
             }
             if (verbose) {
               fprintf(stderr, "local symbol table for application of macro %s\n", m->name);
@@ -586,7 +610,7 @@ int main(int argc, char *argv[]) {
 
     rc = parse(&ast, &abstract, source);
     if (rc == 0) {
-      pass_one(&section, &abstract);
+      pass_one(NULL, &section, &abstract);
 
       if (verbose) {
         struct sym_context *context = sym_root_context();

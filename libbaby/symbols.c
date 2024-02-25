@@ -20,6 +20,7 @@
 #include "butils.h"
 #include "arch.h"
 #include "asm.h"
+#include "asm-ast.h"
 #include "strtab.h"
 #include "symbols.h"
 
@@ -92,8 +93,12 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_type type, str_idx_t name, bool local,
-                                       struct sym_context **found_context) {
+struct symbol *sym_lookup_with_context(struct sym_context *context,
+                                       enum sym_type type,
+                                       str_idx_t name,
+                                       enum sym_lookup_scope scope,
+                                       struct sym_context **found_context,
+                                       struct sym_context *specific_context) {
   struct sym_table *tab;
   struct symbol *sym = NULL;
 
@@ -108,8 +113,13 @@ struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_typ
       sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
                     tab->case_insensitive ? symcasesearch : symsearch);
     }
-    if (!sym)
-      context = local ? NULL : context->parent;
+    if (!sym ||
+        (scope == SYM_LU_SCOPE_EXCLUDE_SPECIFIED_UNDEF &&
+         context == specific_context &&
+         sym->subtype != SYM_ST_WORD)) {
+      context = scope == SYM_LU_SCOPE_LOCAL ? NULL : context->parent;
+      sym = NULL;
+      }
   }
 
   *found_context = context;
@@ -117,10 +127,10 @@ struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_typ
   return sym; 
 }
 
-struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local) {
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, enum sym_lookup_scope scope) {
   struct sym_context *found_context;
 
-  return sym_lookup_with_context(context, type, name, local, &found_context);
+  return sym_lookup_with_context(context, type, name, scope, &found_context, NULL);
 }
 
 struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_idx_t name) {
@@ -279,14 +289,19 @@ void sym_print_table(struct sym_context *context, enum sym_type type) {
     if (extra_info)
       mnemonic_debug_str(extra, sizeof extra, (struct mnemonic *) sym->val.internal);
 
-    fprintf(stderr, "  %-10s 0x%08x %c %-20s %s%s%s\n",
+    fprintf(stderr, "  %-10s 0x%08x %c %-20s %s%s%s%s",
             sym_type_names[sym->ref.type],
             sym->val.numeric,
             sym_subtype_id[sym->subtype],
             str_text(sym->ref.name),
             extra_info ? "(" : "",
             extra_info ? extra : "",
-            extra_info ? ")" : "");
+            extra_info ? ")" : "",
+            sym->subtype == SYM_ST_AST ? "AST: " : "\n");
+    if (sym->subtype == SYM_ST_AST) {
+      ast_plot_tree(stderr, sym->val.ast);
+      fprintf(stderr, "\n");
+    }
   }
 }
 

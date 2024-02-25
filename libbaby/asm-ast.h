@@ -55,7 +55,8 @@ struct ast_node {
 
 extern void ast_plot_tree(FILE *stream, struct ast_node *node);
 extern void ast_free_tree(struct ast_node *node);
-size_t ast_count_list(struct ast_node *node);
+extern struct ast_node *ast_copy_tree(struct ast_node *node, struct ast_node *copy);
+extern size_t ast_count_list(struct ast_node *node);
 
 extern struct ast_node ast_nil_node;
 #define AST_NIL_NODE (&ast_nil_node)
