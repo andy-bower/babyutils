@@ -29,9 +29,17 @@
  * data structure. */
 
 const char *sym_type_names[SYM_T_MAX] = {
-  [ SYM_T_MNEMONIC] = "MNEMONIC",
-  [ SYM_T_LABEL] = "LABEL",
+  [ SYM_T_MNEMONIC ] = "MNEMONIC",
+  [ SYM_T_LABEL ] = "LABEL",
 };
+
+const char sym_subtype_id[] = {
+  [ SYM_ST_UNDEF ] = 'U',
+  [ SYM_ST_WORD ] = 'D',
+  [ SYM_ST_MNEM ] = 'M',
+  [ SYM_ST_AST ] = 'A',
+};
+
 
 struct sym_table {
   struct symbol *symbols;
@@ -84,7 +92,8 @@ const char *sym_type_name(enum sym_type type) {
   return sym_type_names[type];
 }
 
-struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local) {
+struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_type type, str_idx_t name, bool local,
+                                       struct sym_context **found_context) {
   struct sym_table *tab;
   struct symbol *sym = NULL;
 
@@ -99,10 +108,19 @@ struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_i
       sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
                     tab->case_insensitive ? symcasesearch : symsearch);
     }
-    context = local ? NULL : context->parent;
+    if (!sym)
+      context = local ? NULL : context->parent;
   }
 
+  *found_context = context;
+
   return sym; 
+}
+
+struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local) {
+  struct sym_context *found_context;
+
+  return sym_lookup_with_context(context, type, name, local, &found_context);
 }
 
 struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_idx_t name) {
@@ -126,7 +144,7 @@ struct symref *sym_getref(struct sym_context *context, enum sym_type type, str_i
   sym = &tab->symbols[tab->count++];
   sym->ref.type = type;
   sym->ref.name = name;
-  sym->defined = false;
+  sym->subtype = SYM_ST_UNDEF;
   tab->sorted = false;
 
   return &sym->ref;
@@ -145,14 +163,15 @@ union symval sym_getval(struct sym_context *context, struct symref *ref) {
   return sym->val;
 }
 
-void sym_setval(struct sym_context *context, struct symref *ref, bool defined, union symval val) {
+void sym_setval(struct sym_context *context, struct symref *ref,
+                enum sym_subtype subtype, union symval val) {
   struct symbol *sym;
 
   sym = sym_lookup(context, ref->type, ref->name, true);
 
   assert(sym);
-  sym->defined = defined;
-  sym->val = defined ? val : (union symval) { .numeric = 0 };
+  sym->subtype = subtype;
+  sym->val = sym->subtype == SYM_ST_UNDEF ? SYM_VAL_NUL : val;
 }
 
 int sym_table_create(struct sym_context *context, enum sym_type type) {
@@ -228,13 +247,17 @@ struct sym_context *sym_root_context(void) {
   return sym_global_context;
 }
 
-struct symref *sym_add(struct sym_context *context, enum sym_type type, str_idx_t name, bool defined, union symval value) {
+struct symref *sym_add(struct sym_context *context,
+                       enum sym_type type,
+                       str_idx_t name,
+                       enum sym_subtype subtype,
+                       union symval value) {
   struct symref *symref;
 
   assert(type < SYM_T_MAX);
 
   symref = sym_getref(context, type, name);
-  sym_setval(context, symref, defined, value);
+  sym_setval(context, symref, subtype, value);
   return symref;
 }
 
@@ -250,7 +273,7 @@ void sym_print_table(struct sym_context *context, enum sym_type type) {
   fprintf(stderr, "Symbol table (%s):\n", sym_type_names[type]);
   for (i = 0; i < tab->count; i++) {
     struct symbol *sym = tab->symbols + i;
-    bool extra_info = sym->defined && sym->ref.type == SYM_T_MNEMONIC;
+    bool extra_info = sym->subtype == SYM_ST_MNEM;
     char extra[60];
 
     if (extra_info)
@@ -259,7 +282,7 @@ void sym_print_table(struct sym_context *context, enum sym_type type) {
     fprintf(stderr, "  %-10s 0x%08x %c %-20s %s%s%s\n",
             sym_type_names[sym->ref.type],
             sym->val.numeric,
-            sym->defined ? 'D' : 'U',
+            sym_subtype_id[sym->subtype],
             str_text(sym->ref.name),
             extra_info ? "(" : "",
             extra_info ? extra : "",

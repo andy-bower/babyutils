@@ -25,6 +25,13 @@ enum sym_type {
   SYM_T_MAX
 };
 
+enum sym_subtype {
+  SYM_ST_UNDEF,
+  SYM_ST_MNEM,
+  SYM_ST_WORD,
+  SYM_ST_AST,
+};
+
 struct symref {
   enum sym_type type;
   str_idx_t name;
@@ -33,12 +40,16 @@ struct symref {
 union symval {
   addr_t numeric;
   void *internal;
+  struct ast_node *ast;
+  struct mnemonic mnem;
 };
+
+#define SYM_VAL_NUL ((union symval) { .numeric = 0 })
 
 struct symbol {
   struct symref ref;
   union symval val;
-  bool defined:1;
+  enum sym_subtype subtype;
 };
 
 /* Opaque types */
@@ -57,7 +68,10 @@ struct sym_context *sym_root_context(void);
 
 const char *sym_type_name(enum sym_type type);
 
-/* Look up a symbol by (type, name). Return NULL if not found. */
+extern struct symbol *sym_lookup_with_context(struct sym_context *context, enum sym_type type, str_idx_t name,
+                                              bool local, struct sym_context **found_context);
+
+ /* Look up a symbol by (type, name). Return NULL if not found. */
 extern struct symbol *sym_lookup(struct sym_context *context, enum sym_type type, str_idx_t name, bool local);
 
 /* Look up a symbol by (type, name), Return a new or existing reference
@@ -68,13 +82,13 @@ extern struct symref *sym_getref(struct sym_context *context, enum sym_type type
 extern union symval sym_getval(struct sym_context *context, struct symref *ref);
 
 /* Set the value for a symbol which already exists. */
-extern void sym_setval(struct sym_context *context, struct symref *ref, bool defined, union symval value);
+extern void sym_setval(struct sym_context *context, struct symref *ref, enum sym_subtype subtype, union symval value);
 
 /* Set a symbol value, adding if necessary. */
-extern struct symref *sym_add(struct sym_context *context, enum sym_type type, str_idx_t name, bool defined, union symval value);
+extern struct symref *sym_add(struct sym_context *context, enum sym_type type, str_idx_t name, enum sym_subtype subtype, union symval value);
 
 static inline struct symref *sym_add_num(struct sym_context *context, enum sym_type type, str_idx_t name, num_t value) {
-  return sym_add(context, type, name, true, (union symval) { .numeric = value });
+  return sym_add(context, type, name, SYM_ST_WORD, (union symval) { .numeric = value });
 }
 
 extern void sym_sort(struct sym_context *context, enum sym_type type);

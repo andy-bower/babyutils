@@ -86,51 +86,90 @@ static void asm_buf_free(struct asm_buf *buf) {
   memset(buf, '\0', sizeof *buf);
 }
 
-int eval_expr(num_t *result, struct sym_context *context, struct ast_node *node) {
+enum eval_result {
+  EVAL_OK,
+  EVAL_PARTIAL,
+  EVAL_ERROR,
+};
+
+static enum sym_subtype expr_to_symval(union symval *symval, struct ast_node *node) {
+  if (node->t == AST_NUMBER) {
+    symval->numeric = node->v.number;
+    return SYM_ST_WORD;
+  } else {
+    symval->ast = node;
+    return SYM_ST_AST;
+  }
+}
+
+static enum eval_result eval_expr(struct sym_context *context, struct ast_node *node, bool allow_partial) {
+  struct sym_context *sym_context;
+  enum eval_result rc_a, rc_b;
   struct symbol *sym;
+  union symval sv;
   num_t a, b;
-  int rc;
 
   switch (node->t) {
+  case AST_SYMBOL:
   case AST_LABEL:
-    sym = sym_lookup(context, SYM_T_LABEL, node->v.nameref.name, false);
-    if (!sym) {
-      fprintf(stderr, "label undefined: %s\n", SSTR(node->v.nameref.name));
-      return EHANDLED;
+    sym = sym_lookup_with_context(context, SYM_T_LABEL, node->v.nameref.name, false, &sym_context);
+    if (sym && sym->subtype == SYM_ST_AST && !allow_partial) {
+      /* Try to resolve symbol in its own context if possible */
+      rc_a = eval_expr(sym_context, sym->val.ast, allow_partial);
+      if (rc_a == EVAL_ERROR)
+        return rc_a;
+      if (rc_a == EVAL_OK)
+        sym_setval(sym_context, &sym->ref, expr_to_symval(&sv, sym->val.ast), sv);
     }
-    *result = sym->val.numeric;
-    break;
+    if (sym && sym->subtype == SYM_ST_WORD) {
+      node->t = AST_NUMBER;
+      node->v.number = sym->val.numeric;
+    } else if (!allow_partial) {
+      fprintf(stderr, "label undefined: %s\n", SSTR(node->v.nameref.name));
+      return EVAL_ERROR;
+    } else {
+      return EVAL_PARTIAL;
+    }
   case AST_NUMBER:
-    *result = node->v.number;
-    break;
+    return EVAL_OK;
   case AST_MINUS:
   case AST_PLUS:
-    rc = eval_expr(&a, context, node->v.tuple[0]);
-    if (rc != 0)
-      return rc;
-    rc = eval_expr(&b, context, node->v.tuple[1]);
-    if (rc != 0)
-      return rc;
-    *result = node->t == AST_MINUS ? a - b : a + b;
+    rc_a = eval_expr(context, node->v.tuple[0], allow_partial);
+    rc_b = eval_expr(context, node->v.tuple[1], allow_partial);
+    if (rc_a == EVAL_OK && rc_b == EVAL_OK && node->v.tuple[0]->t == node->v.tuple[1]->t) {
+      a = node->v.tuple[0]->v.number;
+      b = node->v.tuple[1]->v.number;
+      a = node->t == AST_MINUS ? a - b : a + b;
+      ast_free_tree(node->v.tuple[0]);
+      ast_free_tree(node->v.tuple[1]);
+      node->t = node->v.tuple[0]->v.number = node->v.tuple[0]->t;
+      node->v.number = a;
+      return EVAL_OK;
+    } else if (allow_partial && (rc_a == EVAL_PARTIAL || rc_b == EVAL_PARTIAL)) {
+      return EVAL_PARTIAL;
+    } else {
+      return EVAL_ERROR;
+    }
   default:
     fprintf(stderr, "eval: invalid ast node\n");
-    rc = EINVAL;
+    return EVAL_ERROR;
   }
-  return 0;
 }
 
 int assemble_one(struct section *section,
                  struct asm_abstract *abstract, bool first_pass) {
   int rc = 0;
+  enum eval_result ev;
 
   /* Resolve operands on second pass */
-  if (!first_pass) {
+  if (!first_pass && abstract->flags & HAS_INSTR) {
     num_t *evaluated_operands = &abstract->opr_effective;
     const int max_operands = 1;
     struct ast_node *node;
     int op_i = 0;
 
     for (node = abstract->operands; node->t != AST_NIL; node = node->v.tuple[1]) {
+      struct ast_node *val = node->v.tuple[0];
       assert(node->t == AST_TUPLE);
 
       if (op_i == max_operands) {
@@ -138,9 +177,11 @@ int assemble_one(struct section *section,
         return EHANDLED;
       }
 
-      rc = eval_expr(&evaluated_operands[op_i++], abstract->context, node->v.tuple[0]);
-      if (rc != 0)
-        return rc;
+      ev = eval_expr(abstract->context, val, false);
+      if (ev != EVAL_OK)
+        return EHANDLED;
+      assert(val->t == AST_NUMBER);
+      evaluated_operands[op_i++] = val->v.number;
     }
 
     assert(op_i == abstract->n_operands);
@@ -334,6 +375,9 @@ int parse_stmts(struct sym_context *context,
                  formal_args->t == AST_TUPLE;
                  actual_args = actual_args->v.tuple[1],
                  formal_args = formal_args->v.tuple[1]) {
+              enum eval_result ev;
+              union symval sv;
+
               if (formal_args->t == AST_NIL) {
                 fprintf(stderr, "too many arguments to macro %s\n", m->name);
                 return EINVAL;
@@ -341,10 +385,12 @@ int parse_stmts(struct sym_context *context,
                 fprintf(stderr, "insuficient arugments to macro %s\n", m->name);
                 return EINVAL;
               }
-              assert(actual_args->v.tuple[0]->t == AST_NUMBER);
-              sym_add_num(new_context, SYM_T_LABEL,
+              ev = eval_expr(new_context, actual_args->v.tuple[0], true);
+              if (ev == EVAL_ERROR)
+                return EINVAL;
+              sym_add(new_context, SYM_T_LABEL,
                           formal_args->v.tuple[0]->v.str,
-                          actual_args->v.tuple[0]->v.number);
+                          expr_to_symval(&sv, actual_args->v.tuple[0]), sv);
             }
             if (verbose) {
               fprintf(stderr, "local symbol table for application of macro %s\n", m->name);

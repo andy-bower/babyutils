@@ -31,13 +31,22 @@ struct ast_node ast_nil_node = {
   .t = AST_NIL
 };
 
+static const char *ast_semantic_tuple_name[] = {
+  [ AST_MACRO ] = "Macro",
+  [ AST_INSTR ] = "Instr",
+  [ AST_MINUS ] = "Op-",
+  [ AST_PLUS ] = "Op+",
+};
+
 void ast_plot_tree(FILE *out, struct ast_node *node) {
   int i;
 
   switch (node->t) {
   case AST_MACRO:
   case AST_INSTR:
-    fprintf(out, node->t == AST_MACRO ? "Macro" : "Instr");
+  case AST_MINUS:
+  case AST_PLUS:
+    fprintf(out, "%s", ast_semantic_tuple_name[node->t]);
   case AST_TUPLE:
     fprintf(out, "(");
     ast_plot_tree(out, node->v.tuple[0]);
@@ -81,6 +90,8 @@ void ast_free_tree(struct ast_node *node) {
   switch (node->t) {
   case AST_INSTR:
   case AST_MACRO:
+  case AST_MINUS:
+  case AST_PLUS:
   case AST_TUPLE:
     ast_free_tree(node->v.tuple[0]);
     ast_free_tree(node->v.tuple[1]);

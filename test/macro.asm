@@ -5,8 +5,8 @@
 
 mld \
   MACRO x
-  ldn zero
-  sub x
+  ldn x
+  mneg
   ENDM
 
 madd \
@@ -14,8 +14,19 @@ madd \
   sto tmp
   ldn tmp
   sub x
+  mneg
+  ENDM
+
+mneg \
+  MACRO
   sto tmp
   ldn tmp
+  ENDM
+
+madd2 MACRO x, y
+  LDN x
+  SUB y
+  MNEG
   ENDM
 
 28:
@@ -27,14 +38,17 @@ tmp:
 01:
 start:
   mld a
-  mld b
-  madd
+  madd b
   sto c
+  madd2 a, b
+  sto d
   hlt
 
 a:
   num 3
 b:
-  num 5
+  num 8 - 3
 c:
   num 0    -- should become 8 at end of test
+d:
+  num 0    ; should become 8 at end of test
