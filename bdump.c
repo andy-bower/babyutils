@@ -28,8 +28,6 @@
 
 #define DEFAULT_INPUT_FORMAT READER_BITS BITS_SUFFIX_SNP
 
-struct strtab *strtab_src;
-
 /* Abstract disassembly */
 struct dis_abstract {
   struct asm_abstract alts[2];
