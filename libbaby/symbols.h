@@ -35,7 +35,7 @@ enum sym_subtype {
 enum sym_lookup_scope {
   SYM_LU_SCOPE_DEFAULT,
   SYM_LU_SCOPE_LOCAL,
-  SYM_LU_SCOPE_EXCLUDE_SPECIFIED,
+  SYM_LU_SCOPE_EXCLUDE_SPECIFIED_UNDEF,
 };
 
 struct symref {

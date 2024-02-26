@@ -58,14 +58,15 @@ push_instr_templ:
 sub_j:
     eja x
 next_j:
-    eja next
-next:
+    num $
     endm
 
 rts macro
+    sto _tmp
     ld _sp
     sto ret_instr
     inc _sp
+    ld _tmp
 ret_instr:
     jmp 0                ; rely on encoding of JMP instruction
     endm
@@ -82,12 +83,12 @@ _start:
     hlt
 
 count_recursive:
-    sub one
+    sub _one
     skn
-    jst count_recursive
+    jsr count_recursive
     rts
 
-28:
+60:
 _stack:
 _sp:
     num _stack           ; full descending stack

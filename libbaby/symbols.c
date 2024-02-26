@@ -105,16 +105,20 @@ struct symbol *sym_lookup_with_context(struct sym_context *context,
 
   while (context && !sym) {
     tab = context->tables[type];
-    if ((scope != SYM_LU_SCOPE_EXCLUDE_SPECIFIED || context != specific_context) &&
-        tab) {
+    if (tab) {
       if (!tab->sorted)
         sym_sort(context, type);
 
       sym = bsearch((void *) name, tab->symbols, tab->count, sizeof tab->symbols[0],
                     tab->case_insensitive ? symcasesearch : symsearch);
     }
-    if (!sym)
+    if (!sym ||
+        (scope == SYM_LU_SCOPE_EXCLUDE_SPECIFIED_UNDEF &&
+         context == specific_context &&
+         sym->subtype != SYM_ST_WORD)) {
       context = scope == SYM_LU_SCOPE_LOCAL ? NULL : context->parent;
+      sym = NULL;
+      }
   }
 
   *found_context = context;

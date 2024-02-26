@@ -121,11 +121,12 @@ static enum eval_result eval_expr(struct sym_context *context, struct ast_node *
   case AST_SYMBOL:
   case AST_LABEL:
     sym = sym_lookup_with_context(context, SYM_T_LABEL, node->v.nameref.name,
-                                  SYM_LU_SCOPE_EXCLUDE_SPECIFIED, &sym_context,
+                                  SYM_LU_SCOPE_EXCLUDE_SPECIFIED_UNDEF, &sym_context,
                                   context);
     if (sym && sym->subtype == SYM_ST_AST && !allow_partial) {
       fprintf(stderr, "EXPANDING: ");
       ast_plot_tree(stderr, sym->val.ast);
+      fprintf(stderr, "\n");
       rc_a = eval_expr(sym_context, sym->val.ast, allow_partial);
       if (rc_a == EVAL_ERROR)
         return rc_a;
@@ -399,6 +400,7 @@ int parse_stmts(struct sym_context *context,
                  formal_args->t == AST_TUPLE;
                  actual_args = actual_args->v.tuple[1],
                  formal_args = formal_args->v.tuple[1]) {
+              struct ast_node *copy;
               enum eval_result ev;
               union symval sv;
 
@@ -409,14 +411,16 @@ int parse_stmts(struct sym_context *context,
                 fprintf(stderr, "insuficient arugments to macro %s\n", m->name);
                 return EINVAL;
               }
-              ev = eval_expr(new_context, actual_args->v.tuple[0], true);
+              copy = ast_copy_tree(actual_args->v.tuple[0], NULL);
+              ev = eval_expr(new_context, copy, true);
               if (ev == EVAL_ERROR)
                 return EINVAL;
               fprintf(stderr, "binding: ");
-              ast_plot_tree(stderr, actual_args->v.tuple[0]);
+              ast_plot_tree(stderr, copy);
+              fprintf(stderr, "\n");
               sym_add(new_context, SYM_T_LABEL,
                       formal_args->v.tuple[0]->v.str,
-                      expr_to_symval(&sv, actual_args->v.tuple[0]), sv);
+                      expr_to_symval(&sv, copy), sv);
             }
             if (verbose) {
               fprintf(stderr, "local symbol table for application of macro %s\n", m->name);
